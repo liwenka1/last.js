@@ -8,6 +8,7 @@ build
 .next
 .output
 .nitro
+.lastjs
 
 # Logs
 *.log
@@ -38,5 +39,6 @@ yarn.lock
 .cache
 .turbo
 .eslintcache
+
 
 

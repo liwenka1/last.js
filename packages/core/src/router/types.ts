@@ -59,9 +59,6 @@ export interface RouteMatch {
 
   /** 路由参数 */
   params: Record<string, string>;
-
-  /** 从根到当前节点的路径 */
-  segments: RouteSegment[];
 }
 
 /**
