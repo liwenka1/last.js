@@ -14,11 +14,12 @@ export {
   renderWithLayouts,
   generateHTML,
   wrapWithDoctype,
+  generateHydrationScript,
   generate404HTML,
   generateErrorHTML,
   getViteHMRScripts,
 } from './render/index.js';
-export type { RenderOptions } from './render/index.js';
+export type { RenderOptions, HydrationData } from './render/index.js';
 
 // Server
 export { startDevServer } from './server/index.js';

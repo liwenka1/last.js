@@ -10,6 +10,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ViteDevServer } from 'vite';
 import type { ReactNode } from 'react';
+import { relative } from 'pathe';
 import { FileSystemRouter } from '../router/fs-router.js';
 import {
   renderWithLayouts,
@@ -44,12 +45,21 @@ type LayoutComponent = React.ComponentType<{ children: ReactNode }>;
 type PageComponent = React.ComponentType<Record<string, unknown>>;
 
 /**
+ * 将绝对路径转换为相对于项目根目录的路径（用于客户端导入）
+ */
+function toClientPath(absolutePath: string, rootDir: string): string {
+  const relativePath = relative(rootDir, absolutePath);
+  // 确保路径以 / 开头
+  return '/' + relativePath;
+}
+
+/**
  * 启动开发服务器
  */
 export async function startDevServer(
   options: DevServerOptions
 ): Promise<DevServerResult> {
-  const { appDir, port = 3000, vite } = options;
+  const { appDir, port = 3000, rootDir = process.cwd(), vite } = options;
 
   // 创建路由器并扫描
   const router = new FileSystemRouter(appDir);
@@ -88,13 +98,26 @@ export async function startDevServer(
     defineEventHandler(async (event) => {
       const url = getRequestURL(event);
 
-      // 跳过静态资源
+      // 跳过静态资源（但允许 .tsx/.ts 文件通过 Vite 处理）
       if (
         url.pathname.match(
           /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/
         )
       ) {
         return;
+      }
+
+      // 让 Vite 处理源文件请求（用于客户端 hydration）
+      if (url.pathname.match(/\.(tsx?|jsx?)(\?.*)?$/)) {
+        return new Promise<void>((resolve) => {
+          const req = event.node?.req as IncomingMessage | undefined;
+          const res = event.node?.res as ServerResponse | undefined;
+          if (req && res) {
+            vite.middlewares(req, res, () => resolve());
+          } else {
+            resolve();
+          }
+        });
       }
 
       try {
@@ -119,14 +142,29 @@ export async function startDevServer(
         const pageMod = await vite.ssrLoadModule(match.filePath);
         const Page: PageComponent = pageMod.default || pageMod;
 
-        // 渲染带有 layout 嵌套的页面
-        const content = renderWithLayouts(layouts, Page, {
+        // 页面 props
+        const pageProps = {
           params: match.params,
-        });
+        };
 
-        // 包装为完整 HTML 文档
+        // 渲染带有 layout 嵌套的页面
+        const content = renderWithLayouts(layouts, Page, pageProps);
+
+        // 转换为客户端可用的路径
+        const clientLayoutPaths = layoutPaths.map((p) =>
+          toClientPath(p, rootDir)
+        );
+        const clientPagePath = toClientPath(match.filePath, rootDir);
+
+        // 包装为完整 HTML 文档，注入 hydration 数据
         const html = wrapWithDoctype(content, {
           viteScripts: getViteHMRScripts(),
+          hydrationData: {
+            props: pageProps,
+            layoutPaths: clientLayoutPaths,
+            pagePath: clientPagePath,
+          },
+          clientEntry: '/@lastjs/client',
         });
 
         setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');

@@ -6,6 +6,16 @@ export interface RenderOptions {
   title?: string;
   /** Vite HMR 脚本 */
   viteScripts?: string;
+  /** Hydration 数据 */
+  hydrationData?: HydrationData;
+  /** 客户端入口脚本路径 */
+  clientEntry?: string;
+}
+
+export interface HydrationData {
+  props: Record<string, unknown>;
+  layoutPaths: string[];
+  pagePath: string;
 }
 
 /**
@@ -43,13 +53,37 @@ export function renderWithLayouts(
 }
 
 /**
+ * 生成 hydration 脚本
+ */
+export function generateHydrationScript(data: HydrationData): string {
+  // 转义 HTML 特殊字符，防止 XSS
+  const jsonStr = JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+  return `<script>window.__LASTJS_DATA__=${jsonStr};</script>`;
+}
+
+/**
  * 生成完整的 HTML 文档（用于没有根 Layout 的情况）
  */
 export function generateHTML(
   content: string,
   options: RenderOptions = {}
 ): string {
-  const { title = 'Last.js App', viteScripts = '' } = options;
+  const {
+    title = 'Last.js App',
+    viteScripts = '',
+    hydrationData,
+    clientEntry,
+  } = options;
+
+  const hydrationScript = hydrationData
+    ? generateHydrationScript(hydrationData)
+    : '';
+  const clientScript = clientEntry
+    ? `<script type="module" src="${clientEntry}"></script>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -68,7 +102,9 @@ export function generateHTML(
     ${viteScripts}
   </head>
   <body>
-    <div id="root">${content}</div>
+    <div id="__lastjs">${content}</div>
+    ${hydrationScript}
+    ${clientScript}
   </body>
 </html>`;
 }
@@ -81,15 +117,32 @@ export function wrapWithDoctype(
   content: string,
   options: RenderOptions = {}
 ): string {
-  const { viteScripts = '' } = options;
+  const { viteScripts = '', hydrationData, clientEntry } = options;
+
+  const hydrationScript = hydrationData
+    ? generateHydrationScript(hydrationData)
+    : '';
+  const clientScript = clientEntry
+    ? `<script type="module" src="${clientEntry}"></script>`
+    : '';
 
   // 如果内容已经是完整的 HTML 文档
   if (content.includes('<html')) {
+    let result = content;
+
     // 在 </head> 前注入 Vite 脚本
     if (viteScripts) {
-      return `<!DOCTYPE html>${content.replace('</head>', `${viteScripts}</head>`)}`;
+      result = result.replace('</head>', `${viteScripts}</head>`);
     }
-    return `<!DOCTYPE html>${content}`;
+
+    // 用 <div id="__lastjs"> 包裹 body 内容，并注入 hydration 脚本
+    // 找到 <body> 和 </body> 之间的内容
+    result = result.replace(
+      /(<body[^>]*>)([\s\S]*?)(<\/body>)/,
+      `$1<div id="__lastjs">$2</div>${hydrationScript}${clientScript}$3`
+    );
+
+    return `<!DOCTYPE html>${result}`;
   }
 
   // 否则用默认模板包装
