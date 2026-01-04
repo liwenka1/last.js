@@ -13,17 +13,22 @@ export async function generateMetadata({ params }: PageProps) {
 
 export default function BlogPost({ params }: PageProps) {
   const { slug } = params;
-  
+
   // 模拟博客数据
-  const posts: Record<string, { title: string; content: string; date: string }> = {
+  const posts: Record<
+    string,
+    { title: string; content: string; date: string }
+  > = {
     'hello-world': {
       title: 'Hello World',
-      content: 'Welcome to my first blog post! This demonstrates dynamic routing in Last.js.',
+      content:
+        'Welcome to my first blog post! This demonstrates dynamic routing in Last.js.',
       date: '2024-01-04',
     },
     'getting-started': {
       title: 'Getting Started with Last.js',
-      content: 'Learn how to build your first application with Last.js framework.',
+      content:
+        'Learn how to build your first application with Last.js framework.',
       date: '2024-01-05',
     },
   };
@@ -43,18 +48,29 @@ export default function BlogPost({ params }: PageProps) {
       <div style={{ marginTop: '2rem', lineHeight: '1.6' }}>
         <p>{post.content}</p>
       </div>
-      
+
       <hr style={{ margin: '2rem 0' }} />
-      
+
       <h2>Dynamic Route Demo</h2>
-      <p>This page uses dynamic routing with the pattern: <code>/blog/[slug]</code></p>
-      <p>Current slug: <strong>{slug}</strong></p>
-      
+      <p>
+        This page uses dynamic routing with the pattern:{' '}
+        <code>/blog/[slug]</code>
+      </p>
+      <p>
+        Current slug: <strong>{slug}</strong>
+      </p>
+
       <h3>Try these URLs:</h3>
       <ul>
-        <li><a href="/blog/hello-world">/blog/hello-world</a></li>
-        <li><a href="/blog/getting-started">/blog/getting-started</a></li>
-        <li><a href="/blog/any-slug-works">/blog/any-slug-works</a></li>
+        <li>
+          <a href="/blog/hello-world">/blog/hello-world</a>
+        </li>
+        <li>
+          <a href="/blog/getting-started">/blog/getting-started</a>
+        </li>
+        <li>
+          <a href="/blog/any-slug-works">/blog/any-slug-works</a>
+        </li>
       </ul>
     </article>
   );

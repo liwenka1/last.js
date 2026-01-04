@@ -14,13 +14,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <nav style={{ padding: '1rem', borderBottom: '1px solid #eee' }}>
-          <a href="/" style={{ marginRight: '1rem' }}>Home</a>
-          <a href="/about" style={{ marginRight: '1rem' }}>About</a>
+          <a href="/" style={{ marginRight: '1rem' }}>
+            Home
+          </a>
+          <a href="/about" style={{ marginRight: '1rem' }}>
+            About
+          </a>
           <a href="/blog/hello-world">Blog</a>
         </nav>
-        <main style={{ padding: '2rem' }}>
-          {children}
-        </main>
+        <main style={{ padding: '2rem' }}>{children}</main>
       </body>
     </html>
   );

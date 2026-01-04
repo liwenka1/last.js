@@ -12,12 +12,7 @@ export default defineConfig({
   clean: true,
   splitting: false,
   sourcemap: true,
-  external: [
-    'react',
-    'react-dom',
-    'pathe',
-    'ufo',
-  ],
+  external: ['react', 'react-dom', 'pathe', 'ufo'],
   esbuildOptions(options) {
     options.platform = 'node';
   },

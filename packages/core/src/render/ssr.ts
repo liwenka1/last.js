@@ -7,7 +7,10 @@ export interface RenderOptions {
   onError?: (error: unknown) => void;
 }
 
-export function renderToStream(element: ReactElement, options: RenderOptions = {}) {
+export function renderToStream(
+  element: ReactElement,
+  options: RenderOptions = {}
+) {
   return renderToPipeableStream(element, {
     onShellReady: options.onShellReady,
     onShellError: options.onShellError,

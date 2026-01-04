@@ -16,13 +16,13 @@ export type RouteType = 'static' | 'dynamic' | 'catch-all';
 export interface RouteNode {
   /** 路由段名称（如 'blog', '[slug]', '[...slug]'） */
   segment: string;
-  
+
   /** 完整路径（如 '/blog', '/blog/[slug]'） */
   path: string;
-  
+
   /** 路由类型 */
   type: RouteType;
-  
+
   /** 特殊文件路径 */
   files: {
     /** page.tsx - 页面组件 */
@@ -36,16 +36,16 @@ export interface RouteNode {
     /** not-found.tsx - 404 页面 */
     notFound?: string;
   };
-  
+
   /** 子路由节点 */
   children: Map<string, RouteNode>;
-  
+
   /** 动态路由子节点 [slug] */
   dynamicChild?: RouteNode;
-  
+
   /** Catch-all 路由子节点 [...slug] */
   catchAllChild?: RouteNode;
-  
+
   /** 父节点引用 */
   parent?: RouteNode;
 }
@@ -56,10 +56,10 @@ export interface RouteNode {
 export interface RouteMatch {
   /** 匹配的路由节点 */
   node: RouteNode;
-  
+
   /** 路由参数 */
   params: Record<string, string>;
-  
+
   /** 从根到当前节点的路径 */
   segments: RouteSegment[];
 }
@@ -71,7 +71,7 @@ export interface RouteMatch {
 export interface RouteSegment {
   /** 路由节点 */
   node: RouteNode;
-  
+
   /** 该段的参数 */
   params: Record<string, string>;
 }
@@ -82,17 +82,18 @@ export interface RouteSegment {
  */
 export interface RouteModule {
   /** 默认导出的组件 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default?: ComponentType<any>;
-  
+
   /** 静态 metadata */
   metadata?: Metadata;
-  
+
   /** 动态 generateMetadata */
   generateMetadata?: (props: {
     params: Record<string, string>;
     searchParams?: Record<string, string | string[]>;
   }) => Promise<Metadata> | Metadata;
-  
+
   /** 路由段配置 */
   dynamic?: 'auto' | 'force-dynamic' | 'force-static' | 'error';
   revalidate?: number | false;
@@ -103,10 +104,12 @@ export interface RouteModule {
  * Metadata 类型
  */
 export interface Metadata {
-  title?: string | {
-    default: string;
-    template?: string;
-  };
+  title?:
+    | string
+    | {
+        default: string;
+        template?: string;
+      };
   description?: string;
   keywords?: string | string[];
   openGraph?: {
@@ -133,6 +136,7 @@ export interface Metadata {
   robots?: {
     index?: boolean;
     follow?: boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
   };
   icons?: {

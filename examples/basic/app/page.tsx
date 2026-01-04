@@ -3,7 +3,7 @@ export default function HomePage() {
     <div>
       <h1>Welcome to Last.js 🚀</h1>
       <p>A minimal Next.js alternative with App Router and SSR</p>
-      
+
       <h2>Features</h2>
       <ul>
         <li>✅ File-system based App Router</li>
@@ -15,7 +15,9 @@ export default function HomePage() {
       </ul>
 
       <h2>Quick Start</h2>
-      <pre style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px' }}>
+      <pre
+        style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px' }}
+      >
         {`# Install dependencies
 pnpm install
 

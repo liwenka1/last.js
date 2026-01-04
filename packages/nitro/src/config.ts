@@ -32,4 +32,3 @@ export function createNitroConfig(options: LastNitroOptions): NitroConfig {
     ],
   });
 }
-

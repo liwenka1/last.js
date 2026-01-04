@@ -34,4 +34,3 @@ export function lastVitePlugin(options: LastVitePluginOptions = {}): Plugin[] {
     },
   ];
 }
-

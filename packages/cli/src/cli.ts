@@ -17,9 +17,9 @@ program
   .action(async (options) => {
     console.log(pc.cyan('🚀 Starting Last.js development server...'));
     console.log(pc.dim(`   Port: ${options.port}`));
-    
+
     const appDir = join(process.cwd(), 'app');
-    
+
     // TODO: Implement dev server with Vite + Nitro
     console.log(pc.yellow('⚠️  Dev server not implemented yet'));
     console.log(pc.dim(`   App directory: ${appDir}`));
@@ -30,9 +30,9 @@ program
   .description('Build for production')
   .action(async () => {
     console.log(pc.cyan('📦 Building Last.js application...'));
-    
+
     const appDir = join(process.cwd(), 'app');
-    
+
     // TODO: Implement build with Vite + Nitro
     console.log(pc.yellow('⚠️  Build not implemented yet'));
     console.log(pc.dim(`   App directory: ${appDir}`));
@@ -45,7 +45,7 @@ program
   .action(async (options) => {
     console.log(pc.green('▲ Starting Last.js production server...'));
     console.log(pc.dim(`   Port: ${options.port}`));
-    
+
     // TODO: Implement production server
     console.log(pc.yellow('⚠️  Production server not implemented yet'));
   });
@@ -58,4 +58,3 @@ export function runCLI(argv?: string[]) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   runCLI();
 }
-

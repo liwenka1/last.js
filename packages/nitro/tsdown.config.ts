@@ -7,12 +7,7 @@ export default defineConfig({
   clean: true,
   splitting: false,
   sourcemap: true,
-  external: [
-    '@lastjs/core',
-    'nitropack',
-    'h3',
-    'pathe',
-  ],
+  external: ['@lastjs/core', 'nitropack', 'h3', 'pathe'],
   esbuildOptions(options) {
     options.platform = 'node';
   },

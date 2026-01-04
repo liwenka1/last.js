@@ -7,11 +7,7 @@ export default defineConfig({
   clean: true,
   splitting: false,
   sourcemap: true,
-  external: [
-    '@lastjs/core',
-    'vite',
-    '@vitejs/plugin-react',
-  ],
+  external: ['@lastjs/core', 'vite', '@vitejs/plugin-react'],
   esbuildOptions(options) {
     options.platform = 'node';
   },
