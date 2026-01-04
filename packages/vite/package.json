@@ -1,13 +1,10 @@
 {
-  "name": "@lastjs/cli",
+  "name": "@lastjs/vite",
   "version": "0.1.0",
-  "description": "CLI for Last.js framework",
+  "description": "Vite plugin for Last.js",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "bin": {
-    "lastjs": "./dist/cli.mjs"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -24,11 +21,8 @@
   },
   "dependencies": {
     "@lastjs/core": "workspace:*",
-    "@lastjs/nitro": "workspace:*",
-    "@lastjs/vite": "workspace:*",
-    "commander": "^14.0.2",
-    "pathe": "^2.0.3",
-    "picocolors": "^1.1.1"
+    "@vitejs/plugin-react": "^5.1.2",
+    "vite": "^7.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -40,13 +34,15 @@
   },
   "keywords": [
     "lastjs",
-    "cli"
+    "vite",
+    "plugin"
   ],
   "author": "",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/last.js.git",
-    "directory": "packages/cli"
+    "directory": "packages/vite"
   }
 }
+

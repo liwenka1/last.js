@@ -1,26 +1,33 @@
 {
-  "name": "@lastjs/core",
+  "name": "lastjs",
   "version": "0.1.0",
-  "description": "Core functionality for Last.js - routing and rendering",
+  "description": "A minimal Next.js alternative with App Router and SSR",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
+  "bin": {
+    "lastjs": "./dist/cli.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
     "./router": {
-      "types": "./dist/router/index.d.mts",
-      "default": "./dist/router/index.mjs"
+      "types": "./dist/router.d.mts",
+      "default": "./dist/router.mjs"
     },
     "./render": {
-      "types": "./dist/render/index.d.mts",
-      "default": "./dist/render/index.mjs"
+      "types": "./dist/render.d.mts",
+      "default": "./dist/render.mjs"
     },
-    "./types": {
-      "types": "./dist/types/index.d.mts",
-      "default": "./dist/types/index.mjs"
+    "./nitro": {
+      "types": "./dist/nitro.d.mts",
+      "default": "./dist/nitro.mjs"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.mts",
+      "default": "./dist/vite.mjs"
     }
   },
   "files": [
@@ -29,12 +36,13 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "pathe": "^2.0.3",
-    "ufo": "^1.6.1"
+    "@lastjs/cli": "workspace:*",
+    "@lastjs/core": "workspace:*",
+    "@lastjs/nitro": "workspace:*",
+    "@lastjs/vite": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -44,25 +52,27 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
-    "@vitest/ui": "^4.0.16",
     "tsdown": "^0.19.0-beta.2",
-    "typescript": "^5.7.2",
-    "vitest": "^4.0.16"
+    "typescript": "^5.7.2"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "keywords": [
-    "lastjs",
-    "router",
+    "react",
     "ssr",
-    "react"
+    "framework",
+    "next",
+    "app-router",
+    "nitro",
+    "vite",
+    "lastjs"
   ],
   "author": "",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/last.js.git",
-    "directory": "packages/core"
+    "directory": "packages/lastjs"
   }
 }

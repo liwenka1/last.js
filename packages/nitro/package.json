@@ -1,13 +1,10 @@
 {
-  "name": "@lastjs/cli",
+  "name": "@lastjs/nitro",
   "version": "0.1.0",
-  "description": "CLI for Last.js framework",
+  "description": "Nitro integration for Last.js",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
-  "bin": {
-    "lastjs": "./dist/cli.mjs"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -24,11 +21,9 @@
   },
   "dependencies": {
     "@lastjs/core": "workspace:*",
-    "@lastjs/nitro": "workspace:*",
-    "@lastjs/vite": "workspace:*",
-    "commander": "^14.0.2",
-    "pathe": "^2.0.3",
-    "picocolors": "^1.1.1"
+    "h3": "2.0.1-rc.7",
+    "nitropack": "^2.12.9",
+    "pathe": "^2.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -40,13 +35,15 @@
   },
   "keywords": [
     "lastjs",
-    "cli"
+    "nitro",
+    "server"
   ],
   "author": "",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/last.js.git",
-    "directory": "packages/cli"
+    "directory": "packages/nitro"
   }
 }
+

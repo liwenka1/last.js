@@ -1,13 +1,19 @@
-import { readdir, stat } from 'fs/promises';
-import { join, relative } from 'path';
-import type { Route } from './types.js';
+import { readdir } from 'fs/promises';
+import { join } from 'pathe';
+
+interface SimpleRoute {
+  path: string;
+  filePath: string;
+  params: string[];
+  isDynamic: boolean;
+}
 
 export class FileSystemRouter {
-  private routes: Route[] = [];
+  private routes: SimpleRoute[] = [];
   
   constructor(private appDir: string) {}
 
-  async scan(): Promise<Route[]> {
+  async scan(): Promise<SimpleRoute[]> {
     this.routes = [];
     await this.scanDirectory(this.appDir);
     return this.routes.sort((a, b) => {
@@ -71,7 +77,7 @@ export class FileSystemRouter {
       .join('/') || '/';
   }
 
-  match(pathname: string): { route: Route; params: Record<string, string> } | null {
+  match(pathname: string): { route: SimpleRoute; params: Record<string, string> } | null {
     for (const route of this.routes) {
       const params = this.matchRoute(route.path, pathname);
       if (params !== null) {

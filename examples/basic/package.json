@@ -4,19 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "last dev",
+    "dev": "lastjs dev",
+    "build": "lastjs build",
+    "start": "lastjs start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@last/cli": "workspace:*",
-    "@last/core": "workspace:*",
+    "lastjs": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
-    "babel-plugin-react-compiler": "^19.0.0-beta-df7b47d-20241124",
     "typescript": "^5.7.2"
   }
 }
