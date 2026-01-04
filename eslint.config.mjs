@@ -16,6 +16,7 @@ export default [
       '**/coverage/**',
       '**/.nitro/**',
       '**/.output/**',
+      '**/.lastjs/**',
       '**/*.config.js',
       '**/*.config.mjs',
       '**/*.config.cjs',
