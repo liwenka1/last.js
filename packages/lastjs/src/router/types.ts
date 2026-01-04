@@ -70,7 +70,7 @@ export interface RouteMatch {
  */
 export interface RouteModule {
   /** 默认导出的组件 */
-  default?: ComponentType<any>;
+  default?: ComponentType<Record<string, unknown>>;
 
   /** 静态 metadata */
   metadata?: Metadata;
@@ -118,7 +118,7 @@ export interface Metadata {
   robots?: {
     index?: boolean;
     follow?: boolean;
-    [key: string]: any;
+    [key: string]: boolean | string | undefined;
   };
   icons?: {
     icon?: string;
@@ -126,4 +126,3 @@ export interface Metadata {
     apple?: string;
   };
 }
-

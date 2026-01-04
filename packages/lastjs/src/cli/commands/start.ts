@@ -13,4 +13,3 @@ export async function start(_options: StartCommandOptions): Promise<void> {
     pc.dim('   Run `lastjs build` first, then start the production server\n')
   );
 }
-

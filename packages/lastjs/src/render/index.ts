@@ -1,6 +1,5 @@
 import * as React from 'react';
 import * as ReactDOMServer from 'react-dom/server';
-import type { RouteMatch } from '../router/types.js';
 
 export interface RenderOptions {
   /** 页面标题 */
@@ -13,8 +12,8 @@ export interface RenderOptions {
  * 渲染页面组件为 HTML
  */
 export function renderComponent(
-  Component: React.ComponentType<any>,
-  props: Record<string, any>
+  Component: React.ComponentType<Record<string, unknown>>,
+  props: Record<string, unknown>
 ): string {
   const element = React.createElement(Component, props);
   return ReactDOMServer.renderToString(element);
@@ -130,4 +129,3 @@ export function getViteHMRScripts(): string {
       window.__vite_plugin_react_preamble_installed__ = true
     </script>`;
 }
-

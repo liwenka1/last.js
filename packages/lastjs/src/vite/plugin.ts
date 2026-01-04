@@ -10,9 +10,7 @@ export interface LastVitePluginOptions {
  * Last.js Vite 插件
  * 配置 React 支持和 SSR
  */
-export function lastVitePlugin(options: LastVitePluginOptions = {}): Plugin[] {
-  const { appDir = 'app' } = options;
-
+export function lastVitePlugin(_options: LastVitePluginOptions = {}): Plugin[] {
   // 获取 React 插件
   const reactPlugin = react();
   const plugins = Array.isArray(reactPlugin) ? reactPlugin : [reactPlugin];
@@ -37,4 +35,3 @@ export function lastVitePlugin(options: LastVitePluginOptions = {}): Plugin[] {
     },
   ];
 }
-

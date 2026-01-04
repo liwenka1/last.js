@@ -1,7 +1,8 @@
 import pc from 'picocolors';
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface BuildCommandOptions {
-  // 构建选项
+  // TODO: 添加构建选项
 }
 
 export async function build(_options: BuildCommandOptions): Promise<void> {
@@ -11,4 +12,3 @@ export async function build(_options: BuildCommandOptions): Promise<void> {
   console.log(pc.yellow('⚠️  Build command not implemented yet'));
   console.log(pc.dim('   This will be implemented in the next phase\n'));
 }
-

@@ -121,7 +121,12 @@ export class FileSystemRouter {
           }
 
           // 创建子节点
-          const childNode = this.createNode(segment, newBasePath, type, parentNode);
+          const childNode = this.createNode(
+            segment,
+            newBasePath,
+            type,
+            parentNode
+          );
 
           // 递归扫描
           await this.scanDirectory(fullPath, childNode, newBasePath);
@@ -157,11 +162,17 @@ export class FileSystemRouter {
           parentNode.files.page = fullPath;
         } else if (entry.name === 'layout.tsx' || entry.name === 'layout.jsx') {
           parentNode.files.layout = fullPath;
-        } else if (entry.name === 'loading.tsx' || entry.name === 'loading.jsx') {
+        } else if (
+          entry.name === 'loading.tsx' ||
+          entry.name === 'loading.jsx'
+        ) {
           parentNode.files.loading = fullPath;
         } else if (entry.name === 'error.tsx' || entry.name === 'error.jsx') {
           parentNode.files.error = fullPath;
-        } else if (entry.name === 'not-found.tsx' || entry.name === 'not-found.jsx') {
+        } else if (
+          entry.name === 'not-found.tsx' ||
+          entry.name === 'not-found.jsx'
+        ) {
           parentNode.files.notFound = fullPath;
         }
       }
@@ -200,4 +211,3 @@ export class FileSystemRouter {
     return pathname.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
   }
 }
-

@@ -6,4 +6,3 @@ export type {
   RouteType,
   Metadata,
 } from './types.js';
-

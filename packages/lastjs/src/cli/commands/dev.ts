@@ -24,7 +24,7 @@ export async function dev(options: DevCommandOptions): Promise<void> {
     });
 
     // 2. 启动开发服务器
-    const { server, close } = await startDevServer({
+    const { close } = await startDevServer({
       appDir,
       port: options.port,
       rootDir,
@@ -54,4 +54,3 @@ export async function dev(options: DevCommandOptions): Promise<void> {
     process.exit(1);
   }
 }
-
