@@ -3,31 +3,31 @@
   "version": "0.1.0",
   "description": "A minimal Next.js alternative with App Router and SSR",
   "type": "module",
-  "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "lastjs": "./dist/cli.mjs"
+    "lastjs": "./dist/cli.js"
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./router": {
-      "types": "./dist/router.d.mts",
-      "default": "./dist/router.mjs"
+      "types": "./dist/router/index.d.ts",
+      "default": "./dist/router/index.js"
     },
     "./render": {
-      "types": "./dist/render.d.mts",
-      "default": "./dist/render.mjs"
+      "types": "./dist/render/index.d.ts",
+      "default": "./dist/render/index.js"
     },
-    "./nitro": {
-      "types": "./dist/nitro.d.mts",
-      "default": "./dist/nitro.mjs"
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
     },
     "./vite": {
-      "types": "./dist/vite.d.mts",
-      "default": "./dist/vite.mjs"
+      "types": "./dist/vite/index.d.ts",
+      "default": "./dist/vite/index.js"
     }
   },
   "files": [
@@ -39,20 +39,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lastjs/cli": "workspace:*",
-    "@lastjs/core": "workspace:*",
-    "@lastjs/nitro": "workspace:*",
-    "@lastjs/vite": "workspace:*"
+    "@vitejs/plugin-react": "^4.3.4",
+    "commander": "^12.1.0",
+    "h3": "^1.13.1",
+    "pathe": "^2.0.3",
+    "picocolors": "^1.1.1",
+    "vite": "^6.0.7"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
-    "tsdown": "^0.19.0-beta.2",
+    "tsdown": "^0.9.2",
     "typescript": "^5.7.2"
   },
   "engines": {
@@ -64,7 +66,6 @@
     "framework",
     "next",
     "app-router",
-    "nitro",
     "vite",
     "lastjs"
   ],

@@ -2,25 +2,21 @@ import { defineConfig } from 'tsdown';
 
 export default defineConfig({
   entry: {
-    index: 'src/index.ts',
-    cli: 'src/cli.ts',
-    router: 'src/router.ts',
-    render: 'src/render.ts',
-    nitro: 'src/nitro.ts',
-    vite: 'src/vite.ts',
+    'index': 'src/index.ts',
+    'router/index': 'src/router/index.ts',
+    'render/index': 'src/render/index.ts',
+    'server/index': 'src/server/index.ts',
+    'vite/index': 'src/vite/index.ts',
+    'cli': 'src/cli/cli.ts',
   },
   format: ['esm'],
   dts: true,
   clean: true,
-  splitting: false,
   sourcemap: true,
   external: [
-    '@lastjs/core',
-    '@lastjs/cli',
-    '@lastjs/nitro',
-    '@lastjs/vite',
     'react',
     'react-dom',
+    'react-dom/server',
   ],
   esbuildOptions(options) {
     options.platform = 'node';
