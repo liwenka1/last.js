@@ -8,13 +8,6 @@ import type { RouteNode, RouteType, RouteMatch } from './types.js';
  */
 export class FileSystemRouter {
   private root: RouteNode;
-  private routes: Map<string, string> = new Map();
-  private dynamicRoutes: Array<{
-    pattern: RegExp;
-    paramNames: string[];
-    filePath: string;
-    node: RouteNode;
-  }> = [];
 
   constructor(private appDir: string) {
     this.root = this.createNode('', '/', 'static');
@@ -24,44 +17,82 @@ export class FileSystemRouter {
    * 扫描 app 目录
    */
   async scan(): Promise<void> {
-    this.routes.clear();
-    this.dynamicRoutes = [];
-    await this.scanDirectory(this.appDir, this.root, '');
+    await this.scanDirectory(this.appDir, this.root);
   }
 
   /**
    * 匹配路由
    */
   match(pathname: string): RouteMatch | null {
-    const normalizedPath = this.normalizePath(pathname);
+    const segments = this.normalizePath(pathname).split('/').filter(Boolean);
 
-    // 1. 先尝试静态路由匹配
-    const staticMatch = this.routes.get(normalizedPath);
-    if (staticMatch) {
-      return {
-        node: this.root,
-        params: {},
-        filePath: staticMatch,
-      };
-    }
+    const params: Record<string, string> = {};
+    let currentNode = this.root;
 
-    // 2. 再尝试动态路由匹配
-    for (const route of this.dynamicRoutes) {
-      const match = normalizedPath.match(route.pattern);
-      if (match) {
-        const params: Record<string, string> = {};
-        route.paramNames.forEach((name, i) => {
-          params[name] = match[i + 1];
-        });
-        return {
-          node: route.node,
-          params,
-          filePath: route.filePath,
-        };
+    // 逐段匹配
+    for (const segment of segments) {
+      let nextNode: RouteNode | undefined;
+
+      // 1. 尝试静态匹配
+      nextNode = currentNode.children.get(segment);
+
+      // 2. 尝试动态匹配 [slug]
+      if (!nextNode && currentNode.dynamicChild) {
+        nextNode = currentNode.dynamicChild;
+        const paramName = this.extractParamName(nextNode.segment);
+        if (paramName) {
+          params[paramName] = segment;
+        }
       }
+
+      // 3. 尝试 catch-all 匹配 [...slug]
+      if (!nextNode && currentNode.catchAllChild) {
+        nextNode = currentNode.catchAllChild;
+        const paramName = this.extractParamName(nextNode.segment);
+        if (paramName) {
+          // 收集剩余所有段
+          const remainingIndex = segments.indexOf(segment);
+          params[paramName] = segments.slice(remainingIndex).join('/');
+        }
+        currentNode = nextNode;
+        break;
+      }
+
+      if (!nextNode) {
+        return null;
+      }
+
+      currentNode = nextNode;
     }
 
-    return null;
+    // 检查是否有 page 文件
+    if (!currentNode.files.page) {
+      return null;
+    }
+
+    return {
+      node: currentNode,
+      params,
+      filePath: currentNode.files.page,
+    };
+  }
+
+  /**
+   * 获取从根到当前节点的所有 layout 路径
+   */
+  getLayoutChain(node: RouteNode): string[] {
+    const layouts: string[] = [];
+    let current: RouteNode | undefined = node;
+
+    // 从当前节点向上收集所有 layout
+    while (current) {
+      if (current.files.layout) {
+        layouts.unshift(current.files.layout);
+      }
+      current = current.parent;
+    }
+
+    return layouts;
   }
 
   /**
@@ -69,27 +100,40 @@ export class FileSystemRouter {
    */
   getRoutes(): Array<{ path: string; filePath: string }> {
     const routes: Array<{ path: string; filePath: string }> = [];
-
-    // 静态路由
-    this.routes.forEach((filePath, path) => {
-      routes.push({ path, filePath });
-    });
-
-    // 动态路由
-    this.dynamicRoutes.forEach((route) => {
-      routes.push({
-        path: route.pattern.source,
-        filePath: route.filePath,
-      });
-    });
-
+    this.collectRoutes(this.root, routes);
     return routes;
+  }
+
+  private collectRoutes(
+    node: RouteNode,
+    routes: Array<{ path: string; filePath: string }>
+  ): void {
+    if (node.files.page) {
+      routes.push({
+        path: node.path,
+        filePath: node.files.page,
+      });
+    }
+
+    // 遍历静态子节点
+    node.children.forEach((child) => {
+      this.collectRoutes(child, routes);
+    });
+
+    // 遍历动态子节点
+    if (node.dynamicChild) {
+      this.collectRoutes(node.dynamicChild, routes);
+    }
+
+    // 遍历 catch-all 子节点
+    if (node.catchAllChild) {
+      this.collectRoutes(node.catchAllChild, routes);
+    }
   }
 
   private async scanDirectory(
     dir: string,
-    parentNode: RouteNode,
-    basePath: string
+    parentNode: RouteNode
   ): Promise<void> {
     try {
       const entries = await readdir(dir, { withFileTypes: true });
@@ -107,58 +151,22 @@ export class FileSystemRouter {
           const type = this.getRouteType(segment);
 
           // 构建路径
-          let newBasePath: string;
-          if (type === 'dynamic') {
-            // [slug] -> :slug
-            const paramName = segment.slice(1, -1);
-            newBasePath = `${basePath}/:${paramName}`;
-          } else if (type === 'catch-all') {
-            // [...slug] -> *slug
-            const paramName = segment.slice(4, -1);
-            newBasePath = `${basePath}/*${paramName}`;
-          } else {
-            newBasePath = `${basePath}/${segment}`;
-          }
+          const newPath =
+            parentNode.path === '/'
+              ? `/${segment}`
+              : `${parentNode.path}/${segment}`;
 
-          // 创建子节点
-          const childNode = this.createNode(
+          // 创建或获取子节点
+          const childNode = this.getOrCreateChildNode(
+            parentNode,
             segment,
-            newBasePath,
-            type,
-            parentNode
+            newPath,
+            type
           );
 
           // 递归扫描
-          await this.scanDirectory(fullPath, childNode, newBasePath);
+          await this.scanDirectory(fullPath, childNode);
         } else if (entry.name === 'page.tsx' || entry.name === 'page.jsx') {
-          // 找到页面文件
-          const routePath = basePath || '/';
-
-          if (routePath.includes(':') || routePath.includes('*')) {
-            // 动态路由
-            const paramNames: string[] = [];
-            const patternStr = routePath
-              .replace(/:([^/]+)/g, (_, name) => {
-                paramNames.push(name);
-                return '([^/]+)';
-              })
-              .replace(/\*([^/]+)/g, (_, name) => {
-                paramNames.push(name);
-                return '(.+)';
-              });
-
-            this.dynamicRoutes.push({
-              pattern: new RegExp(`^${patternStr}$`),
-              paramNames,
-              filePath: fullPath,
-              node: parentNode,
-            });
-          } else {
-            // 静态路由
-            this.routes.set(routePath, fullPath);
-          }
-
-          // 记录到节点
           parentNode.files.page = fullPath;
         } else if (entry.name === 'layout.tsx' || entry.name === 'layout.jsx') {
           parentNode.files.layout = fullPath;
@@ -179,6 +187,35 @@ export class FileSystemRouter {
     } catch (error) {
       console.warn(`Failed to scan directory: ${dir}`, error);
     }
+  }
+
+  private getOrCreateChildNode(
+    parent: RouteNode,
+    segment: string,
+    path: string,
+    type: RouteType
+  ): RouteNode {
+    if (type === 'catch-all') {
+      if (!parent.catchAllChild) {
+        parent.catchAllChild = this.createNode(segment, path, type, parent);
+      }
+      return parent.catchAllChild;
+    }
+
+    if (type === 'dynamic') {
+      if (!parent.dynamicChild) {
+        parent.dynamicChild = this.createNode(segment, path, type, parent);
+      }
+      return parent.dynamicChild;
+    }
+
+    // 静态路由
+    let child = parent.children.get(segment);
+    if (!child) {
+      child = this.createNode(segment, path, type, parent);
+      parent.children.set(segment, child);
+    }
+    return child;
   }
 
   private createNode(
@@ -205,6 +242,13 @@ export class FileSystemRouter {
       return 'dynamic';
     }
     return 'static';
+  }
+
+  private extractParamName(segment: string): string | null {
+    // [...slug] -> slug
+    // [slug] -> slug
+    const match = segment.match(/^\[\.\.\.(.+)\]$|^\[(.+)\]$/);
+    return match ? match[1] || match[2] : null;
   }
 
   private normalizePath(pathname: string): string {

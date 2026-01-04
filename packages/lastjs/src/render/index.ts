@@ -20,7 +20,30 @@ export function renderComponent(
 }
 
 /**
- * 生成完整的 HTML 文档
+ * 渲染带有 Layout 嵌套的页面
+ * @param layouts - Layout 组件数组（从根到叶）
+ * @param Page - 页面组件
+ * @param props - 传递给页面的 props
+ */
+export function renderWithLayouts(
+  layouts: React.ComponentType<{ children: React.ReactNode }>[],
+  Page: React.ComponentType<Record<string, unknown>>,
+  props: Record<string, unknown>
+): string {
+  // 从页面开始构建组件树
+  let element: React.ReactElement = React.createElement(Page, props);
+
+  // 从内到外包裹 layout（反向遍历）
+  for (let i = layouts.length - 1; i >= 0; i--) {
+    const Layout = layouts[i];
+    element = React.createElement(Layout, { children: element });
+  }
+
+  return ReactDOMServer.renderToString(element);
+}
+
+/**
+ * 生成完整的 HTML 文档（用于没有根 Layout 的情况）
  */
 export function generateHTML(
   content: string,
@@ -48,6 +71,29 @@ export function generateHTML(
     <div id="root">${content}</div>
   </body>
 </html>`;
+}
+
+/**
+ * 包装渲染结果为完整 HTML 文档
+ * 用于有根 Layout 的情况（Layout 已包含 html/head/body）
+ */
+export function wrapWithDoctype(
+  content: string,
+  options: RenderOptions = {}
+): string {
+  const { viteScripts = '' } = options;
+
+  // 如果内容已经是完整的 HTML 文档
+  if (content.includes('<html')) {
+    // 在 </head> 前注入 Vite 脚本
+    if (viteScripts) {
+      return `<!DOCTYPE html>${content.replace('</head>', `${viteScripts}</head>`)}`;
+    }
+    return `<!DOCTYPE html>${content}`;
+  }
+
+  // 否则用默认模板包装
+  return generateHTML(content, options);
 }
 
 /**

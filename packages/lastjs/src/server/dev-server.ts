@@ -9,10 +9,11 @@ import {
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ViteDevServer } from 'vite';
+import type { ReactNode } from 'react';
 import { FileSystemRouter } from '../router/fs-router.js';
 import {
-  renderComponent,
-  generateHTML,
+  renderWithLayouts,
+  wrapWithDoctype,
   generate404HTML,
   generateErrorHTML,
   getViteHMRScripts,
@@ -35,6 +36,12 @@ export interface DevServerResult {
   /** 关闭服务器 */
   close: () => Promise<void>;
 }
+
+// Layout 组件类型
+type LayoutComponent = React.ComponentType<{ children: ReactNode }>;
+
+// Page 组件类型
+type PageComponent = React.ComponentType<Record<string, unknown>>;
 
 /**
  * 启动开发服务器
@@ -98,17 +105,27 @@ export async function startDevServer(
           return generate404HTML(url.pathname);
         }
 
-        // 使用 Vite SSR 加载页面组件
-        const mod = await vite.ssrLoadModule(match.filePath);
-        const Component = mod.default || mod;
+        // 获取 layout 链（从根到当前节点）
+        const layoutPaths = router.getLayoutChain(match.node);
 
-        // 渲染组件
-        const content = renderComponent(Component, {
+        // 加载所有 layout 组件
+        const layouts: LayoutComponent[] = [];
+        for (const layoutPath of layoutPaths) {
+          const mod = await vite.ssrLoadModule(layoutPath);
+          layouts.push(mod.default || mod);
+        }
+
+        // 加载页面组件
+        const pageMod = await vite.ssrLoadModule(match.filePath);
+        const Page: PageComponent = pageMod.default || pageMod;
+
+        // 渲染带有 layout 嵌套的页面
+        const content = renderWithLayouts(layouts, Page, {
           params: match.params,
         });
 
-        // 生成完整 HTML
-        const html = generateHTML(content, {
+        // 包装为完整 HTML 文档
+        const html = wrapWithDoctype(content, {
           viteScripts: getViteHMRScripts(),
         });
 

@@ -11,7 +11,9 @@ export type {
 // Render
 export {
   renderComponent,
+  renderWithLayouts,
   generateHTML,
+  wrapWithDoctype,
   generate404HTML,
   generateErrorHTML,
   getViteHMRScripts,
