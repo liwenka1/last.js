@@ -39,6 +39,7 @@ export default [
         },
       },
       globals: {
+        // Node.js globals
         console: 'readonly',
         process: 'readonly',
         Buffer: 'readonly',
@@ -46,6 +47,16 @@ export default [
         __filename: 'readonly',
         NodeJS: 'readonly',
         React: 'readonly',
+        // Browser globals (for client code)
+        window: 'readonly',
+        document: 'readonly',
+        HTMLAnchorElement: 'readonly',
+        MouseEvent: 'readonly',
+        IntersectionObserver: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        requestAnimationFrame: 'readonly',
+        setTimeout: 'readonly',
       },
     },
     plugins: {

@@ -1,10 +1,5 @@
 import type { ReactNode } from 'react';
-
-// TODO: Metadata API will be implemented in the next phase
-// export const metadata = {
-//   title: 'Last.js - A Minimal Next.js Alternative',
-//   description: 'Built with React 19 and modern web technologies',
-// };
+import { Nav } from './components/Nav.js';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -12,6 +7,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Last.js App</title>
         <style>{`
           * {
             margin: 0;
@@ -27,26 +23,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             border-bottom: 1px solid #eee;
             background: #f8f9fa;
           }
-          nav a {
-            margin-right: 1.5rem;
-            text-decoration: none;
-            color: #0070f3;
-            font-weight: 500;
-          }
-          nav a:hover {
-            text-decoration: underline;
-          }
           main {
             padding: 2rem;
           }
         `}</style>
       </head>
       <body>
-        <nav>
-          <a href="/">Home</a>
-          <a href="/about">About</a>
-          <a href="/blog/hello-world">Blog</a>
-        </nav>
+        <Nav />
         <main>{children}</main>
       </body>
     </html>

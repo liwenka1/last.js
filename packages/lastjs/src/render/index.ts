@@ -16,6 +16,7 @@ export interface HydrationData {
   props: Record<string, unknown>;
   layoutPaths: string[];
   pagePath: string;
+  params?: Record<string, string>;
 }
 
 /**

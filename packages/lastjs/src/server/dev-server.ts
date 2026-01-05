@@ -4,6 +4,7 @@ import {
   getRequestURL,
   eventHandler,
   setResponseHeader,
+  getRequestHeader,
   toNodeListener,
 } from 'h3';
 import { createServer } from 'node:http';
@@ -131,6 +132,36 @@ export async function startDevServer(
         // 获取 layout 链（从根到当前节点）
         const layoutPaths = router.getLayoutChain(match.node);
 
+        // 转换为客户端可用的路径
+        const clientLayoutPaths = layoutPaths.map((p) =>
+          toClientPath(p, rootDir)
+        );
+        const clientPagePath = toClientPath(match.filePath, rootDir);
+
+        // 页面 props
+        const pageProps = {
+          params: match.params,
+        };
+
+        // 检查是否为客户端导航请求
+        const isClientNavigation =
+          getRequestHeader(event, 'x-lastjs-navigation') === 'true';
+
+        if (isClientNavigation) {
+          // 客户端导航：返回 JSON 数据
+          setResponseHeader(
+            event,
+            'Content-Type',
+            'application/json; charset=utf-8'
+          );
+          return JSON.stringify({
+            props: pageProps,
+            layoutPaths: clientLayoutPaths,
+            pagePath: clientPagePath,
+            params: match.params,
+          });
+        }
+
         // 加载所有 layout 组件
         const layouts: LayoutComponent[] = [];
         for (const layoutPath of layoutPaths) {
@@ -142,19 +173,8 @@ export async function startDevServer(
         const pageMod = await vite.ssrLoadModule(match.filePath);
         const Page: PageComponent = pageMod.default || pageMod;
 
-        // 页面 props
-        const pageProps = {
-          params: match.params,
-        };
-
         // 渲染带有 layout 嵌套的页面
         const content = renderWithLayouts(layouts, Page, pageProps);
-
-        // 转换为客户端可用的路径
-        const clientLayoutPaths = layoutPaths.map((p) =>
-          toClientPath(p, rootDir)
-        );
-        const clientPagePath = toClientPath(match.filePath, rootDir);
 
         // 包装为完整 HTML 文档，注入 hydration 数据
         const html = wrapWithDoctype(content, {
@@ -163,6 +183,7 @@ export async function startDevServer(
             props: pageProps,
             layoutPaths: clientLayoutPaths,
             pagePath: clientPagePath,
+            params: match.params,
           },
           clientEntry: '/@lastjs/client',
         });
