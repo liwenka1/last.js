@@ -62,13 +62,29 @@ window.__LASTJS_STATE__ = {
   searchParams: new URLSearchParams(window.location.search),
 };
 
+// 判断是否是相同的 URL
+function isSameUrl(href) {
+  const url = new URL(href, window.location.origin);
+  const current = window.location.pathname + window.location.search;
+  const target = url.pathname + url.search;
+  return current === target;
+}
+
 // 全局路由器
 window.__LASTJS_ROUTER__ = {
   push: async (href) => {
+    // 如果目标 URL 与当前 URL 相同，跳过导航
+    if (isSameUrl(href)) {
+      return;
+    }
     window.history.pushState(null, '', href);
     await loadPage(href);
   },
   replace: async (href) => {
+    // 如果目标 URL 与当前 URL 相同，跳过导航
+    if (isSameUrl(href)) {
+      return;
+    }
     window.history.replaceState(null, '', href);
     await loadPage(href);
   },

@@ -1,3 +1,7 @@
+'use client';
+
+import { Link } from 'lastjs/client';
+
 interface PageProps {
   params: {
     slug: string;
@@ -63,13 +67,13 @@ export default function BlogPost({ params }: PageProps) {
       <h3>Try these URLs:</h3>
       <ul>
         <li>
-          <a href="/blog/hello-world">/blog/hello-world</a>
+          <Link href="/blog/hello-world">/blog/hello-world</Link>
         </li>
         <li>
-          <a href="/blog/getting-started">/blog/getting-started</a>
+          <Link href="/blog/getting-started">/blog/getting-started</Link>
         </li>
         <li>
-          <a href="/blog/any-slug-works">/blog/any-slug-works</a>
+          <Link href="/blog/any-slug-works">/blog/any-slug-works</Link>
         </li>
       </ul>
     </article>
