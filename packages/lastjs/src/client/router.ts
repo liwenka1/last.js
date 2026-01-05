@@ -147,9 +147,7 @@ export class ClientRouter {
   /**
    * 匹配路由
    */
-  match(
-    pathname: string
-  ): {
+  match(pathname: string): {
     pagePath: string;
     layoutPaths: string[];
     params: Record<string, string>;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type { Router } from './context.js';
 
 /**
@@ -37,57 +37,20 @@ const serverRouter: Router = {
 };
 
 /**
- * 获取当前 pathname
+ * 空订阅函数（服务端使用）
  */
-function getCurrentPathname(): string {
-  if (!isBrowser) return '/';
-  return window.__LASTJS_STATE__?.pathname ?? window.location.pathname;
+function emptySubscribe() {
+  return () => {};
 }
 
 /**
- * 获取当前 params
+ * 客户端订阅函数
  */
-function getCurrentParams(): Record<string, string> {
-  if (!isBrowser) return {};
-  return window.__LASTJS_STATE__?.params ?? {};
-}
-
-/**
- * 获取当前 searchParams
- */
-function getCurrentSearchParams(): URLSearchParams {
-  if (!isBrowser) return new URLSearchParams();
-  return (
-    window.__LASTJS_STATE__?.searchParams ??
-    new URLSearchParams(window.location.search)
-  );
-}
-
-/**
- * 使用路由状态的 hook
- * 订阅全局状态变化并在变化时重新渲染
- */
-function useRouteState<T>(getter: () => T): T {
-  const [state, setState] = useState<T>(getter);
-
-  useEffect(() => {
-    // 组件挂载时更新状态（确保 hydration 后状态正确）
-    setState(getter());
-
-    // 订阅状态变化
-    if (window.__LASTJS_SUBSCRIBE__) {
-      return window.__LASTJS_SUBSCRIBE__(() => {
-        setState(getter());
-      });
-    }
-
-    // 回退：监听 popstate 事件
-    const handler = () => setState(getter());
-    window.addEventListener('popstate', handler);
-    return () => window.removeEventListener('popstate', handler);
-  }, []);
-
-  return state;
+function subscribe(callback: () => void): () => void {
+  if (!isBrowser || !window.__LASTJS_SUBSCRIBE__) {
+    return () => {};
+  }
+  return window.__LASTJS_SUBSCRIBE__(callback);
 }
 
 /**
@@ -136,7 +99,14 @@ export function useRouter(): Router {
  * ```
  */
 export function usePathname(): string {
-  return useRouteState(getCurrentPathname);
+  const pathname = useSyncExternalStore(
+    subscribe,
+    // getSnapshot: 获取当前状态
+    () => window.__LASTJS_STATE__?.pathname ?? window.location.pathname,
+    // getServerSnapshot: SSR 时返回默认值
+    () => '/'
+  );
+  return pathname;
 }
 
 /**
@@ -159,7 +129,12 @@ export function usePathname(): string {
 export function useParams<
   T extends Record<string, string> = Record<string, string>,
 >(): T {
-  return useRouteState(getCurrentParams) as T;
+  const params = useSyncExternalStore(
+    subscribe,
+    () => window.__LASTJS_STATE__?.params ?? {},
+    () => ({})
+  );
+  return params as T;
 }
 
 /**
@@ -184,7 +159,13 @@ export function useParams<
  * ```
  */
 export function useSearchParams(): URLSearchParams {
-  const searchParams = useRouteState(getCurrentSearchParams);
+  const searchParams = useSyncExternalStore(
+    subscribe,
+    () =>
+      window.__LASTJS_STATE__?.searchParams ??
+      new URLSearchParams(window.location.search),
+    () => new URLSearchParams()
+  );
   return useMemo(
     () => new URLSearchParams(searchParams.toString()),
     [searchParams]

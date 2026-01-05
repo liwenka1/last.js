@@ -128,21 +128,14 @@ async function loadPage(href) {
         searchParams: new URLSearchParams(url.search),
       };
 
-      // 增加版本号（确保 useSyncExternalStore 能检测到变化）
-      window.__LASTJS_STATE_VERSION__ = (window.__LASTJS_STATE_VERSION__ || 0) + 1;
+      // 先通知订阅者状态已更新（这样 useSyncExternalStore 会在渲染时获取新值）
+      notifySubscribers();
 
       // 重新渲染
       const element = buildComponentTree(layouts, Page, props);
 
       if (root) {
         root.render(element);
-        // 渲染后通知订阅者（确保新组件能收到更新）
-        // 使用多个延迟确保 React effects 已执行
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            notifySubscribers();
-          }, 50);
-        });
       }
     } else {
       // 如果返回 HTML，回退到完整页面加载
