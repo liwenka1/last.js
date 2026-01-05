@@ -13,6 +13,7 @@ import type { ViteDevServer } from 'vite';
 import type { ReactNode } from 'react';
 import { relative } from 'pathe';
 import { FileSystemRouter } from '../router/fs-router.js';
+import type { Metadata, RouteModule } from '../router/types.js';
 import {
   renderWithLayouts,
   wrapWithDoctype,
@@ -143,12 +144,28 @@ export async function startDevServer(
           params: match.params,
         };
 
+        // 加载页面模块（需要在判断客户端导航之前，因为需要获取 metadata）
+        const pageMod: RouteModule = await vite.ssrLoadModule(match.filePath);
+
+        // 获取 metadata
+        let metadata: Metadata | undefined;
+        if (pageMod.generateMetadata) {
+          // 动态 metadata
+          metadata = await pageMod.generateMetadata({
+            params: match.params,
+            searchParams: Object.fromEntries(url.searchParams),
+          });
+        } else if (pageMod.metadata) {
+          // 静态 metadata
+          metadata = pageMod.metadata;
+        }
+
         // 检查是否为客户端导航请求
         const isClientNavigation =
           getRequestHeader(event, 'x-lastjs-navigation') === 'true';
 
         if (isClientNavigation) {
-          // 客户端导航：返回 JSON 数据
+          // 客户端导航：返回 JSON 数据（包含 metadata）
           setResponseHeader(
             event,
             'Content-Type',
@@ -159,6 +176,7 @@ export async function startDevServer(
             layoutPaths: clientLayoutPaths,
             pagePath: clientPagePath,
             params: match.params,
+            metadata, // 包含 metadata
           });
         }
 
@@ -169,14 +187,13 @@ export async function startDevServer(
           layouts.push(mod.default || mod);
         }
 
-        // 加载页面组件
-        const pageMod = await vite.ssrLoadModule(match.filePath);
-        const Page: PageComponent = pageMod.default || pageMod;
+        // 获取页面组件（pageMod 已在上面加载）
+        const Page: PageComponent = pageMod.default!;
 
         // 渲染带有 layout 嵌套的页面
         const content = renderWithLayouts(layouts, Page, pageProps);
 
-        // 包装为完整 HTML 文档，注入 hydration 数据
+        // 包装为完整 HTML 文档，注入 hydration 数据和 metadata
         const html = wrapWithDoctype(content, {
           viteScripts: getViteHMRScripts(),
           hydrationData: {
@@ -186,6 +203,7 @@ export async function startDevServer(
             params: match.params,
           },
           clientEntry: '/@lastjs/client',
+          metadata,
         });
 
         setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');

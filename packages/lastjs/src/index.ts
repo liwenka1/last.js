@@ -18,6 +18,7 @@ export {
   generate404HTML,
   generateErrorHTML,
   getViteHMRScripts,
+  renderMetadataToHTML,
 } from './render/index.js';
 export type { RenderOptions, HydrationData } from './render/index.js';
 

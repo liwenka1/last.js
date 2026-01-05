@@ -49,6 +49,75 @@ function notifySubscribers() {
   subscribers.forEach(fn => fn());
 }
 
+// 更新或创建 meta 标签
+function updateMetaTag(name, content, isProperty = false) {
+  const attr = isProperty ? 'property' : 'name';
+  let meta = document.querySelector(\`meta[\${attr}="\${name}"]\`);
+  if (content) {
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute(attr, name);
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', content);
+  } else if (meta) {
+    meta.remove();
+  }
+}
+
+// 更新页面 metadata
+function updateMetadata(metadata) {
+  if (!metadata) return;
+
+  // 更新 title
+  if (metadata.title) {
+    const title = typeof metadata.title === 'string' 
+      ? metadata.title 
+      : metadata.title.default;
+    document.title = title;
+  }
+
+  // 更新 description
+  if (metadata.description !== undefined) {
+    updateMetaTag('description', metadata.description);
+  }
+
+  // 更新 keywords
+  if (metadata.keywords !== undefined) {
+    const keywords = Array.isArray(metadata.keywords) 
+      ? metadata.keywords.join(', ') 
+      : metadata.keywords;
+    updateMetaTag('keywords', keywords);
+  }
+
+  // 更新 Open Graph
+  if (metadata.openGraph) {
+    const og = metadata.openGraph;
+    if (og.title) updateMetaTag('og:title', og.title, true);
+    if (og.description) updateMetaTag('og:description', og.description, true);
+    if (og.url) updateMetaTag('og:url', og.url, true);
+    if (og.siteName) updateMetaTag('og:site_name', og.siteName, true);
+    if (og.type) updateMetaTag('og:type', og.type, true);
+    if (og.locale) updateMetaTag('og:locale', og.locale, true);
+    // 注意：og:image 可能有多个，这里只处理第一个
+    if (og.images && og.images[0]) {
+      updateMetaTag('og:image', og.images[0].url, true);
+    }
+  }
+
+  // 更新 Twitter Card
+  if (metadata.twitter) {
+    const tw = metadata.twitter;
+    if (tw.card) updateMetaTag('twitter:card', tw.card);
+    if (tw.title) updateMetaTag('twitter:title', tw.title);
+    if (tw.description) updateMetaTag('twitter:description', tw.description);
+    if (tw.creator) updateMetaTag('twitter:creator', tw.creator);
+    if (tw.images && tw.images[0]) {
+      updateMetaTag('twitter:image', tw.images[0]);
+    }
+  }
+}
+
 // 订阅函数（供 hooks 使用）
 window.__LASTJS_SUBSCRIBE__ = (callback) => {
   subscribers.add(callback);
@@ -125,7 +194,7 @@ async function loadPage(href) {
     // 如果返回 JSON，说明是导航数据
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
-      const { props, layoutPaths, pagePath, params } = data;
+      const { props, layoutPaths, pagePath, params, metadata } = data;
 
       // 加载模块
       const layoutModules = await Promise.all(
@@ -143,6 +212,9 @@ async function loadPage(href) {
         params: params || {},
         searchParams: new URLSearchParams(url.search),
       };
+
+      // 更新页面 metadata
+      updateMetadata(metadata);
 
       // 先通知订阅者状态已更新（这样 useSyncExternalStore 会在渲染时获取新值）
       notifySubscribers();

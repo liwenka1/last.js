@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 
+export const metadata = {
+  title: 'Home - Last.js',
+  description: 'A minimal Next.js alternative with App Router and SSR',
+};
+
 export default function HomePage() {
   const [count, setCount] = useState(0);
 

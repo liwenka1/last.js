@@ -1,5 +1,6 @@
 import * as React from 'react';
 import * as ReactDOMServer from 'react-dom/server';
+import type { Metadata } from '../router/types.js';
 
 export interface RenderOptions {
   /** 页面标题 */
@@ -10,6 +11,8 @@ export interface RenderOptions {
   hydrationData?: HydrationData;
   /** 客户端入口脚本路径 */
   clientEntry?: string;
+  /** 页面 Metadata */
+  metadata?: Metadata;
 }
 
 export interface HydrationData {
@@ -66,6 +69,18 @@ export function generateHydrationScript(data: HydrationData): string {
 }
 
 /**
+ * 转义 HTML 特殊字符
+ */
+function escapeHTML(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
  * 生成完整的 HTML 文档（用于没有根 Layout 的情况）
  */
 export function generateHTML(
@@ -77,6 +92,7 @@ export function generateHTML(
     viteScripts = '',
     hydrationData,
     clientEntry,
+    metadata,
   } = options;
 
   const hydrationScript = hydrationData
@@ -86,12 +102,28 @@ export function generateHTML(
     ? `<script type="module" src="${clientEntry}"></script>`
     : '';
 
+  // 如果有 metadata，使用 metadata 中的 title，否则使用默认 title
+  const pageTitle = metadata?.title
+    ? typeof metadata.title === 'string'
+      ? metadata.title
+      : metadata.title.default
+    : title;
+
+  // 生成 metadata 标签（排除 title，因为已经单独处理）
+  const metadataWithoutTitle = metadata
+    ? { ...metadata, title: undefined }
+    : undefined;
+  const metadataTags = metadataWithoutTitle
+    ? renderMetadataToHTML(metadataWithoutTitle)
+    : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
+    <title>${escapeHTML(pageTitle)}</title>
+    ${metadataTags}
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -118,7 +150,7 @@ export function wrapWithDoctype(
   content: string,
   options: RenderOptions = {}
 ): string {
-  const { viteScripts = '', hydrationData, clientEntry } = options;
+  const { viteScripts = '', hydrationData, clientEntry, metadata } = options;
 
   const hydrationScript = hydrationData
     ? generateHydrationScript(hydrationData)
@@ -131,9 +163,21 @@ export function wrapWithDoctype(
   if (content.includes('<html')) {
     let result = content;
 
-    // 在 </head> 前注入 Vite 脚本
-    if (viteScripts) {
-      result = result.replace('</head>', `${viteScripts}</head>`);
+    // 移除原有的 <title> 标签（避免 hydration 时被 React 覆盖）
+    result = result.replace(/<title>[^<]*<\/title>/, '');
+
+    // 如果有 metadata 中的 title，在 </head> 前注入
+    // 注意：这个 title 会在 headInjection 中一起注入
+
+    // 生成完整的 metadata 标签（包含 title）
+    const metadataTags = metadata ? renderMetadataToHTML(metadata) : '';
+
+    // 在 </head> 前注入 metadata 和 Vite 脚本
+    const headInjection = [metadataTags, viteScripts]
+      .filter(Boolean)
+      .join('\n    ');
+    if (headInjection) {
+      result = result.replace('</head>', `${headInjection}\n  </head>`);
     }
 
     // 用 <div id="__lastjs"> 包裹 body 内容，并注入 hydration 脚本
@@ -228,4 +272,155 @@ export function getViteHMRScripts(): string {
       window.$RefreshSig$ = () => (type) => type
       window.__vite_plugin_react_preamble_installed__ = true
     </script>`;
+}
+
+/**
+ * 将 Metadata 转换为 HTML meta 标签
+ */
+export function renderMetadataToHTML(metadata: Metadata): string {
+  const tags: string[] = [];
+
+  // Title
+  if (metadata.title) {
+    const title =
+      typeof metadata.title === 'string'
+        ? metadata.title
+        : metadata.title.default;
+    tags.push(`<title>${escapeHTML(title)}</title>`);
+  }
+
+  // Description
+  if (metadata.description) {
+    tags.push(
+      `<meta name="description" content="${escapeHTML(metadata.description)}" />`
+    );
+  }
+
+  // Keywords
+  if (metadata.keywords) {
+    const keywords = Array.isArray(metadata.keywords)
+      ? metadata.keywords.join(', ')
+      : metadata.keywords;
+    tags.push(`<meta name="keywords" content="${escapeHTML(keywords)}" />`);
+  }
+
+  // Robots
+  if (metadata.robots) {
+    const robotsValues: string[] = [];
+    if (metadata.robots.index !== undefined) {
+      robotsValues.push(metadata.robots.index ? 'index' : 'noindex');
+    }
+    if (metadata.robots.follow !== undefined) {
+      robotsValues.push(metadata.robots.follow ? 'follow' : 'nofollow');
+    }
+    if (robotsValues.length > 0) {
+      tags.push(`<meta name="robots" content="${robotsValues.join(', ')}" />`);
+    }
+  }
+
+  // Open Graph
+  if (metadata.openGraph) {
+    const og = metadata.openGraph;
+    if (og.title) {
+      tags.push(
+        `<meta property="og:title" content="${escapeHTML(og.title)}" />`
+      );
+    }
+    if (og.description) {
+      tags.push(
+        `<meta property="og:description" content="${escapeHTML(og.description)}" />`
+      );
+    }
+    if (og.url) {
+      tags.push(`<meta property="og:url" content="${escapeHTML(og.url)}" />`);
+    }
+    if (og.siteName) {
+      tags.push(
+        `<meta property="og:site_name" content="${escapeHTML(og.siteName)}" />`
+      );
+    }
+    if (og.locale) {
+      tags.push(
+        `<meta property="og:locale" content="${escapeHTML(og.locale)}" />`
+      );
+    }
+    if (og.type) {
+      tags.push(`<meta property="og:type" content="${escapeHTML(og.type)}" />`);
+    }
+    if (og.images) {
+      for (const image of og.images) {
+        tags.push(
+          `<meta property="og:image" content="${escapeHTML(image.url)}" />`
+        );
+        if (image.width) {
+          tags.push(
+            `<meta property="og:image:width" content="${image.width}" />`
+          );
+        }
+        if (image.height) {
+          tags.push(
+            `<meta property="og:image:height" content="${image.height}" />`
+          );
+        }
+        if (image.alt) {
+          tags.push(
+            `<meta property="og:image:alt" content="${escapeHTML(image.alt)}" />`
+          );
+        }
+      }
+    }
+  }
+
+  // Twitter Card
+  if (metadata.twitter) {
+    const tw = metadata.twitter;
+    if (tw.card) {
+      tags.push(
+        `<meta name="twitter:card" content="${escapeHTML(tw.card)}" />`
+      );
+    }
+    if (tw.title) {
+      tags.push(
+        `<meta name="twitter:title" content="${escapeHTML(tw.title)}" />`
+      );
+    }
+    if (tw.description) {
+      tags.push(
+        `<meta name="twitter:description" content="${escapeHTML(tw.description)}" />`
+      );
+    }
+    if (tw.creator) {
+      tags.push(
+        `<meta name="twitter:creator" content="${escapeHTML(tw.creator)}" />`
+      );
+    }
+    if (tw.images) {
+      for (const image of tw.images) {
+        tags.push(
+          `<meta name="twitter:image" content="${escapeHTML(image)}" />`
+        );
+      }
+    }
+  }
+
+  // Icons
+  if (metadata.icons) {
+    if (metadata.icons.icon) {
+      tags.push(
+        `<link rel="icon" href="${escapeHTML(metadata.icons.icon)}" />`
+      );
+    }
+    if (metadata.icons.shortcut) {
+      tags.push(
+        `<link rel="shortcut icon" href="${escapeHTML(metadata.icons.shortcut)}" />`
+      );
+    }
+    if (metadata.icons.apple) {
+      tags.push(
+        `<link rel="apple-touch-icon" href="${escapeHTML(metadata.icons.apple)}" />`
+      );
+    }
+  }
+
+  return tags.join('\n    ');
 }
