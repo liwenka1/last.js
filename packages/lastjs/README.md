@@ -1,6 +1,42 @@
-# lastjs
+# Last.js
 
-A minimal Next.js alternative with App Router and SSR.
+A minimal Next.js alternative with App Router, SSR, and Streaming.
+
+## Features
+
+- ✅ **File-system based App Router** - Next.js style routing
+- ✅ **Server-Side Rendering (SSR)** - Full SSR with streaming support
+- ✅ **Streaming with Suspense** - Progressive HTML delivery
+- ✅ **Async Components** - Use async/await directly in components
+- ✅ **Client-side Hydration** - Seamless server-to-client transition
+- ✅ **Dynamic Routes** - `[slug]` and `[...slug]` patterns
+- ✅ **Nested Layouts** - Shared layouts with `layout.tsx`
+- ✅ **Loading States** - `loading.tsx` with Suspense
+- ✅ **Error Handling** - `error.tsx` with Error Boundaries
+- ✅ **TypeScript** - Full TypeScript support
+- ✅ **Powered by Vite** - Lightning fast development
+
+## Architecture: RSC-aware SSR
+
+Last.js uses an **RSC-aware SSR** architecture:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Last.js Architecture                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Server Components (default)                                │
+│  ├─ All components render on server by default             │
+│  ├─ Support async/await for data fetching                  │
+│  └─ Streaming with Suspense boundaries                     │
+│                                                             │
+│  Client Components ('use client')                           │
+│  ├─ Marked with 'use client' directive                     │
+│  ├─ Hydrated on client for interactivity                   │
+│  └─ Can use hooks (useState, useEffect, etc.)              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Installation
 
@@ -10,7 +46,7 @@ pnpm add lastjs react react-dom
 
 ## Quick Start
 
-Create a new project:
+1. Create a new project:
 
 ```bash
 mkdir my-app
@@ -19,7 +55,23 @@ pnpm init
 pnpm add lastjs react react-dom
 ```
 
-Create `app/page.tsx`:
+2. Create `app/layout.tsx`:
+
+```tsx
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+3. Create `app/page.tsx`:
 
 ```tsx
 export default function HomePage() {
@@ -27,7 +79,7 @@ export default function HomePage() {
 }
 ```
 
-Add scripts to `package.json`:
+4. Add scripts to `package.json`:
 
 ```json
 {
@@ -39,46 +91,126 @@ Add scripts to `package.json`:
 }
 ```
 
-Start development:
+5. Start development:
 
 ```bash
 pnpm dev
 ```
 
-## Features
+## Examples
 
-- ✅ File-system based App Router
-- ✅ Server-Side Rendering (SSR)
-- ✅ React 19 Support
-- ✅ Dynamic Routes `[slug]`
-- ✅ TypeScript Support
-- ✅ Powered by Vite + Nitro
+### Server Component (default)
 
-## Package Structure
-
-This is the main package that aggregates all sub-packages:
-
-- `@lastjs/core` - Core routing and rendering
-- `@lastjs/cli` - CLI tools
-- `@lastjs/nitro` - Nitro server integration
-- `@lastjs/vite` - Vite build plugin
-
-## Advanced Usage
-
-You can also import sub-packages directly:
-
-```ts
-// Import from main package (recommended)
-import { FileSystemRouter } from 'lastjs';
-
-// Or import from sub-packages
-import { FileSystemRouter } from '@lastjs/core';
-import { lastVitePlugin } from '@lastjs/vite';
+```tsx
+// app/page.tsx - Server Component
+export default function Page() {
+  // This runs on the server
+  const data = getServerData();
+  return <div>{data}</div>;
+}
 ```
 
-## Documentation
+### Async Component with Streaming
 
-See the [documentation](../../.docs) for more information.
+```tsx
+// app/page.tsx
+import { Suspense } from 'react';
+
+async function AsyncData() {
+  const data = await fetchData(); // Runs on server
+  return <div>{data}</div>;
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <AsyncData />
+    </Suspense>
+  );
+}
+```
+
+### Client Component
+
+```tsx
+// app/components/Counter.tsx
+'use client';
+
+import { useState } from 'react';
+
+export function Counter() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
+}
+```
+
+### Dynamic Routes
+
+```tsx
+// app/blog/[slug]/page.tsx
+export default function BlogPost({ params }: { params: { slug: string } }) {
+  return <h1>Post: {params.slug}</h1>;
+}
+```
+
+### Metadata
+
+```tsx
+// Static metadata
+export const metadata = {
+  title: 'My Page',
+  description: 'Page description',
+};
+
+// Dynamic metadata
+export async function generateMetadata({ params }) {
+  return {
+    title: `Post: ${params.slug}`,
+  };
+}
+```
+
+## File Conventions
+
+| File            | Description                    |
+| --------------- | ------------------------------ |
+| `page.tsx`      | Page component                 |
+| `layout.tsx`    | Shared layout                  |
+| `loading.tsx`   | Loading UI (Suspense fallback) |
+| `error.tsx`     | Error UI (Error Boundary)      |
+| `not-found.tsx` | 404 page                       |
+
+## Client Hooks
+
+```tsx
+'use client';
+
+import {
+  useRouter,
+  usePathname,
+  useParams,
+  useSearchParams,
+} from 'lastjs/client';
+
+function MyComponent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useParams();
+  const searchParams = useSearchParams();
+
+  return <button onClick={() => router.push('/about')}>Go to About</button>;
+}
+```
+
+## Link Component
+
+```tsx
+import { Link } from 'lastjs/client';
+
+<Link href="/about">About</Link>
+<Link href="/blog" prefetch={false}>Blog</Link>
+<Link href="/login" replace>Login</Link>
+```
 
 ## License
 

@@ -1,80 +1,57 @@
-'use client';
+// Server Component - 默认在服务端渲染
+// 没有 'use client' 指令意味着这是一个服务端组件
 
-import { useState } from 'react';
+import { Counter } from './components/Counter';
 
 export const metadata = {
   title: 'Home - Last.js',
-  description: 'A minimal Next.js alternative with App Router and SSR',
+  description: 'A minimal Next.js alternative with SSR and Streaming',
 };
 
+// 服务端数据获取（直接在组件中执行）
+function getServerTime() {
+  return new Date().toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+  });
+}
+
 export default function HomePage() {
-  const [count, setCount] = useState(0);
+  const serverTime = getServerTime();
 
   return (
     <div>
       <h1>Welcome to Last.js 🚀</h1>
-      <p>A minimal Next.js alternative with App Router and SSR</p>
+      <p>A minimal Next.js alternative with SSR and Streaming</p>
 
-      {/* 交互式计数器 - 测试 Hydration */}
+      {/* 服务端渲染的内容 */}
       <div
         style={{
-          margin: '2rem 0',
-          padding: '1.5rem',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          borderRadius: '12px',
-          color: 'white',
+          margin: '1.5rem 0',
+          padding: '1rem',
+          background: '#e8f5e9',
+          borderRadius: '8px',
+          border: '2px solid #4caf50',
         }}
       >
-        <h2 style={{ margin: '0 0 1rem 0' }}>🎉 Interactive Counter</h2>
-        <p style={{ margin: '0 0 1rem 0', opacity: 0.9 }}>
-          This counter demonstrates client-side hydration is working!
+        <h3 style={{ margin: '0 0 0.5rem 0', color: '#2e7d32' }}>
+          📡 Server-Side Rendered
+        </h3>
+        <p style={{ margin: 0 }}>
+          服务器渲染时间: <strong>{serverTime}</strong>
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button
-            onClick={() => setCount(count - 1)}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '1.25rem',
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              borderRadius: '8px',
-              color: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            -
-          </button>
-          <span
-            style={{
-              fontSize: '2rem',
-              fontWeight: 'bold',
-              minWidth: '3rem',
-              textAlign: 'center',
-            }}
-          >
-            {count}
-          </span>
-          <button
-            onClick={() => setCount(count + 1)}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '1.25rem',
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              borderRadius: '8px',
-              color: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            +
-          </button>
-        </div>
+        <small style={{ color: '#666' }}>
+          这段内容在服务端生成，刷新页面会看到时间更新
+        </small>
       </div>
 
-      <h2>Features</h2>
+      {/* 客户端交互组件 */}
+      <Counter />
+
+      <h2>✨ Features</h2>
       <ul>
         <li>✅ File-system based App Router</li>
         <li>✅ Server-Side Rendering (SSR)</li>
+        <li>✅ Streaming with Suspense</li>
         <li>✅ Client-side Hydration</li>
         <li>✅ React 19 Support</li>
         <li>✅ Dynamic Routes [slug]</li>
@@ -83,7 +60,23 @@ export default function HomePage() {
         <li>✅ Powered by Vite</li>
       </ul>
 
-      <h2>Quick Start</h2>
+      <h2>📖 Demo Pages</h2>
+      <ul>
+        <li>
+          <a href="/streaming-demo">🌊 流式渲染演示</a> - 体验 Suspense 流式加载
+        </li>
+        <li>
+          <a href="/slow">⏱️ Async 组件演示</a> - 服务端 async/await 数据获取
+        </li>
+        <li>
+          <a href="/blog/hello-world">📝 动态路由</a> - [slug] 参数路由
+        </li>
+        <li>
+          <a href="/user/123">👤 用户页面</a> - 另一个动态路由示例
+        </li>
+      </ul>
+
+      <h2>🚀 Quick Start</h2>
       <pre
         style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px' }}
       >

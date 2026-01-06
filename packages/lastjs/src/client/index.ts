@@ -20,6 +20,9 @@ export type { ErrorBoundaryProps } from './error-boundary.js';
 // Hooks
 export { useRouter, usePathname, useParams, useSearchParams } from './hooks.js';
 
+// Server Actions
+export { createServerAction, defineServerAction } from './actions.js';
+
 // Context (内部使用，但也导出供高级用户使用)
 export { RouterProvider, useRouterContext } from './context.js';
 export type {

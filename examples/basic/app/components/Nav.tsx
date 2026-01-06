@@ -8,8 +8,12 @@ export function Nav() {
   const links = [
     { href: '/', label: 'Home', exact: true },
     { href: '/about', label: 'About', exact: true },
-    { href: '/blog/hello-world', label: 'Blog', exact: false }, // 匹配所有 /blog/* 路径
-    { href: '/streaming-demo', label: '🌊 流式渲染', exact: false }, // 流式渲染演示
+    { href: '/blog/hello-world', label: 'Blog', exact: false },
+    { href: '/slow', label: '⏱️ Async', exact: true },
+    { href: '/streaming-demo', label: '🌊 Streaming', exact: false },
+    { href: '/server-client-demo', label: '🔀 S/C Demo', exact: true },
+    { href: '/api-demo', label: '🔌 API', exact: true },
+    { href: '/actions-demo', label: '🎬 Actions', exact: true },
   ];
 
   // 判断链接是否激活
@@ -17,7 +21,7 @@ export function Nav() {
     if (exact) {
       return pathname === href;
     }
-    // 前缀匹配：提取基础路径 (e.g., /blog/hello-world -> /blog)
+    // 前缀匹配
     const basePath = href.split('/').slice(0, 2).join('/');
     return pathname === href || pathname.startsWith(basePath + '/');
   };

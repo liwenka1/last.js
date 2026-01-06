@@ -83,11 +83,10 @@ export function renderWithLayouts(
 
   // 如果有 Error 组件和 ErrorBoundary，用 ErrorBoundary 包裹
   if (ErrorComponent && ErrorBoundary) {
-    element = React.createElement(
-      ErrorBoundary,
-      { fallback: ErrorComponent },
-      element
-    );
+    element = React.createElement(ErrorBoundary, {
+      fallback: ErrorComponent,
+      children: element,
+    });
   }
 
   // 从内到外包裹 layout（反向遍历）
@@ -108,9 +107,9 @@ export interface StreamRenderOptions extends RenderWithLayoutsOptions {
   /** Shell 准备好回调（首次可渲染内容） */
   onShellReady?: () => void;
   /** Shell 错误回调 */
-  onShellError?: (error: Error) => void;
+  onShellError?: (error: unknown) => void;
   /** 错误回调 */
-  onError?: (error: Error) => void;
+  onError?: (error: unknown) => void;
 }
 
 /**
@@ -149,11 +148,10 @@ export function buildComponentTree(
 
   // 如果有 Error 组件和 ErrorBoundary，用 ErrorBoundary 包裹
   if (ErrorComponent && ErrorBoundary) {
-    element = React.createElement(
-      ErrorBoundary,
-      { fallback: ErrorComponent },
-      element
-    );
+    element = React.createElement(ErrorBoundary, {
+      fallback: ErrorComponent,
+      children: element,
+    });
   }
 
   // 从内到外包裹 layout（反向遍历）

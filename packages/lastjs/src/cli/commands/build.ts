@@ -2,15 +2,9 @@ import { join } from 'pathe';
 import { mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import pc from 'picocolors';
-import { createBuilder, type Plugin } from 'vite';
-import rsc from '@vitejs/plugin-rsc';
-import react from '@vitejs/plugin-react';
-import {
-  createRscVirtualPlugin,
-  VIRTUAL_RSC_ENTRY,
-  VIRTUAL_SSR_ENTRY,
-  VIRTUAL_BROWSER_ENTRY,
-} from '../../rsc/virtual-entries.js';
+import { build as viteBuild } from 'vite';
+import { lastVitePlugin } from '../../vite/plugin.js';
+import { FileSystemRouter } from '../../router/fs-router.js';
 
 export interface BuildCommandOptions {
   /** 输出目录 */
@@ -18,39 +12,14 @@ export interface BuildCommandOptions {
 }
 
 /**
- * 创建框架配置插件
- * 处理 @vitejs/plugin-rsc 作为框架依赖时的路径问题
- * 参考: https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-rsc/README.md
- */
-function createLastjsConfigPlugin(): Plugin {
-  return {
-    name: 'lastjs:config',
-    configEnvironment(_name, config) {
-      // 重写 optimizeDeps.include 路径，使其通过 lastjs 解析
-      if (config.optimizeDeps?.include) {
-        config.optimizeDeps.include = config.optimizeDeps.include.map(
-          (entry) => {
-            if (entry.startsWith('@vitejs/plugin-rsc')) {
-              return `lastjs > ${entry}`;
-            }
-            return entry;
-          }
-        );
-      }
-    },
-  };
-}
-
-/**
- * 构建生产版本 (RSC 模式)
- * 使用 Vite Builder API 来正确控制构建顺序
+ * 构建生产版本 (SSR 模式)
  */
 export async function build(options: BuildCommandOptions): Promise<void> {
   const rootDir = process.cwd();
   const appDir = join(rootDir, 'app');
   const outDir = options.outDir || join(rootDir, '.lastjs');
 
-  console.log(pc.cyan('🔨 Building Last.js application (RSC mode)...\n'));
+  console.log(pc.cyan('🔨 Building Last.js application...\n'));
 
   try {
     // 1. 清理并创建输出目录
@@ -59,90 +28,88 @@ export async function build(options: BuildCommandOptions): Promise<void> {
       await rm(outDir, { recursive: true, force: true });
     }
     await mkdir(outDir, { recursive: true });
+    await mkdir(join(outDir, 'server'), { recursive: true });
+    await mkdir(join(outDir, 'client'), { recursive: true });
 
-    // 2. 使用 Vite Builder API 进行构建
-    // @vitejs/plugin-rsc 需要使用 builder API 来控制构建顺序
-    console.log(pc.dim('  Creating build configuration...'));
+    // 2. 扫描路由
+    console.log(pc.dim('  Scanning routes...'));
+    const router = new FileSystemRouter(appDir);
+    await router.scan();
+    const routes = router.getRoutes();
+    console.log(pc.dim(`    Found ${routes.length} routes`));
 
-    const builder = await createBuilder({
+    // 3. 构建客户端 bundle
+    console.log(pc.dim('  Building client bundle...'));
+    await viteBuild({
       root: rootDir,
-      plugins: [
-        // 框架配置插件（处理依赖路径）
-        createLastjsConfigPlugin(),
-        // RSC 虚拟入口插件
-        createRscVirtualPlugin(appDir),
-        // @vitejs/plugin-rsc - 它会自动处理构建顺序
-        rsc(),
-        // React 插件
-        react(),
-      ],
-      environments: {
-        rsc: {
-          build: {
-            outDir: join(outDir, 'rsc'),
-            emptyOutDir: true,
-            rollupOptions: {
-              input: {
-                index: VIRTUAL_RSC_ENTRY,
-              },
-              output: {
-                entryFileNames: '[name].js',
-                chunkFileNames: 'chunks/[name]-[hash].js',
-              },
-            },
+      plugins: lastVitePlugin(),
+      build: {
+        outDir: join(outDir, 'client'),
+        emptyOutDir: true,
+        rollupOptions: {
+          input: {
+            client: join(rootDir, 'app/layout.tsx'),
+          },
+          output: {
+            entryFileNames: 'assets/[name]-[hash].js',
+            chunkFileNames: 'assets/[name]-[hash].js',
+            assetFileNames: 'assets/[name]-[hash][extname]',
           },
         },
-        ssr: {
-          build: {
-            outDir: join(outDir, 'ssr'),
-            emptyOutDir: true,
-            rollupOptions: {
-              input: {
-                index: VIRTUAL_SSR_ENTRY,
-              },
-              output: {
-                entryFileNames: '[name].js',
-                chunkFileNames: 'chunks/[name]-[hash].js',
-              },
-            },
+        manifest: true,
+      },
+    });
+
+    // 4. 构建 SSR bundle
+    console.log(pc.dim('  Building server bundle...'));
+    await viteBuild({
+      root: rootDir,
+      plugins: lastVitePlugin(),
+      build: {
+        outDir: join(outDir, 'server'),
+        emptyOutDir: true,
+        ssr: true,
+        rollupOptions: {
+          input: {
+            server: join(rootDir, 'app/layout.tsx'),
           },
-        },
-        client: {
-          build: {
-            outDir: join(outDir, 'client'),
-            emptyOutDir: true,
-            rollupOptions: {
-              input: {
-                index: VIRTUAL_BROWSER_ENTRY,
-              },
-              output: {
-                entryFileNames: 'assets/[name]-[hash].js',
-                chunkFileNames: 'assets/[name]-[hash].js',
-                assetFileNames: 'assets/[name]-[hash][extname]',
-              },
-            },
+          output: {
+            entryFileNames: '[name].js',
+            chunkFileNames: 'chunks/[name]-[hash].js',
           },
         },
       },
-      logLevel: 'info',
+      ssr: {
+        noExternal: true,
+      },
     });
 
-    // 3. 使用 builder.buildApp() 让 @vitejs/plugin-rsc 控制构建顺序
-    console.log(pc.dim('  Building with RSC...'));
-    await builder.buildApp();
-
-    // 4. 复制 public 目录（如果存在）
+    // 5. 复制 public 目录（如果存在）
     const publicDir = join(rootDir, 'public');
     if (existsSync(publicDir)) {
       console.log(pc.dim('  Copying public assets...'));
       await copyDir(publicDir, join(outDir, 'client'));
     }
 
-    // 5. 生成生产服务器入口
+    // 6. 生成路由信息
+    const routeInfo = {
+      routes: routes.map((r) => ({
+        path: r.path,
+        filePath: r.filePath.replace(rootDir, ''),
+      })),
+      notFoundPath: router.getNotFoundPath()?.replace(rootDir, ''),
+      rootLayoutPath: router.getRootLayoutPath()?.replace(rootDir, ''),
+    };
+    await writeFile(
+      join(outDir, 'routes.json'),
+      JSON.stringify(routeInfo, null, 2)
+    );
+
+    // 7. 生成生产服务器入口
     const serverScript = generateServerScript();
     await writeFile(join(outDir, 'server.js'), serverScript);
 
-    // 6. 生成 package.json
+    // 8. 生成 package.json
     const packageJson = {
       type: 'module',
       scripts: {
@@ -156,8 +123,7 @@ export async function build(options: BuildCommandOptions): Promise<void> {
 
     console.log(pc.green('\n✓ Build completed successfully!\n'));
     console.log(pc.dim(`  Output: ${outDir}`));
-    console.log(pc.dim(`  RSC: ${join(outDir, 'rsc')}`));
-    console.log(pc.dim(`  SSR: ${join(outDir, 'ssr')}`));
+    console.log(pc.dim(`  Server: ${join(outDir, 'server')}`));
     console.log(pc.dim(`  Client: ${join(outDir, 'client')}\n`));
     console.log(
       pc.cyan('  Run `lastjs start` to start the production server.\n')
@@ -201,14 +167,29 @@ const mimeTypes = {
   eot: 'application/vnd.ms-fontobject',
 };
 
-// 导入构建后的 RSC handler
-const rscModule = await import('./rsc/index.js');
-const handler = rscModule.default;
+// 读取路由信息
+const routesData = JSON.parse(
+  await readFile(join(__dirname, 'routes.json'), 'utf-8')
+);
 
-if (typeof handler !== 'function') {
-  console.error('Error: RSC handler is not a function');
-  process.exit(1);
+// 读取客户端 manifest
+let clientManifest = {};
+const manifestPath = join(__dirname, 'client/.vite/manifest.json');
+if (existsSync(manifestPath)) {
+  clientManifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
 }
+
+// 获取客户端入口脚本
+function getClientScript() {
+  for (const [key, value] of Object.entries(clientManifest)) {
+    if (value.isEntry) {
+      return '/assets/' + value.file.split('/').pop();
+    }
+  }
+  return null;
+}
+
+const clientScript = getClientScript();
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', \`http://\${req.headers.host}\`);
@@ -227,51 +208,36 @@ const server = createServer(async (req, res) => {
         res.end(content);
         return;
       } catch (e) {
-        // 继续到 RSC 处理
+        // 继续到页面处理
       }
     }
   }
 
-  // RSC 处理
+  // 页面渲染
   try {
-    // 构建 Request 对象
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (value) {
-        headers.set(key, Array.isArray(value) ? value[0] : value);
-      }
-    }
-
-    const request = new Request(url.toString(), {
-      method: req.method || 'GET',
-      headers,
-    });
-
-    // 调用 RSC handler
-    const response = await handler(request);
-
-    // 设置响应
-    res.statusCode = response.status;
-    for (const [key, value] of response.headers.entries()) {
-      res.setHeader(key, value);
-    }
-
-    // 处理流式响应
-    if (response.body) {
-      const reader = response.body.getReader();
-      const pump = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        res.end();
-      };
-      await pump();
-    } else {
-      const body = await response.text();
-      res.end(body);
-    }
+    // 动态导入服务端模块
+    const serverModule = await import('./server/server.js');
+    
+    // 简单的 HTML 响应（生产环境需要更完整的实现）
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(\`
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Last.js App</title>
+        </head>
+        <body>
+          <div id="__lastjs">
+            <h1>Last.js Production Server</h1>
+            <p>Production SSR rendering is being set up...</p>
+            <p>Routes: \${routesData.routes.length}</p>
+          </div>
+          \${clientScript ? \`<script type="module" src="\${clientScript}"></script>\` : ''}
+        </body>
+      </html>
+    \`);
   } catch (error) {
     console.error('Server error:', error);
     res.statusCode = 500;

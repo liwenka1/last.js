@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
-import { Nav } from './components/Nav.js';
+import { Nav } from './components/Nav';
 
 // 根 layout 的默认 metadata
-// 页面可以通过 export const metadata 或 generateMetadata 覆盖
 export const metadata = {
   title: 'Last.js App',
-  description: 'A minimal Next.js alternative with App Router and SSR',
+  description: 'A minimal Next.js alternative with SSR and Streaming',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -31,6 +30,24 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           }
           main {
             padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+          }
+          a {
+            color: #0070f3;
+          }
+          code {
+            background: #f5f5f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+          }
+          pre {
+            background: #f5f5f5;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
           }
         `}</style>
       </head>

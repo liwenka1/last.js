@@ -6,6 +6,9 @@ import {
   setResponseHeader,
   getRequestHeader,
   toNodeListener,
+  getMethod,
+  createError,
+  readBody,
 } from 'h3';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -15,7 +18,6 @@ import { relative } from 'pathe';
 import { FileSystemRouter } from '../router/fs-router.js';
 import type { Metadata, RouteModule } from '../router/types.js';
 import {
-  renderWithLayouts,
   renderToStream,
   wrapWithDoctype,
   generate404HTML,
@@ -23,8 +25,11 @@ import {
   getViteHMRScripts,
   generateHydrationScript,
   renderMetadataToHTML,
+  renderWithLayouts,
 } from '../render/index.js';
 import { isNotFoundError } from '../navigation/index.js';
+import { ApiRouter } from './api-router.js';
+import { handleServerAction, type ActionRequest } from './actions-handler.js';
 
 export interface DevServerOptions {
   /** app 目录路径 */
@@ -50,6 +55,11 @@ type LayoutComponent = React.ComponentType<{ children: ReactNode }>;
 // Page 组件类型
 type PageComponent = React.ComponentType<Record<string, unknown>>;
 
+// 扩展 Request 类型以支持路由参数
+interface RequestWithParams extends Request {
+  params?: Record<string, string>;
+}
+
 /**
  * 将绝对路径转换为相对于项目根目录的路径（用于客户端导入）
  */
@@ -60,6 +70,71 @@ function toClientPath(absolutePath: string, rootDir: string): string {
 }
 
 /**
+ * 检查组件是否是 async 函数
+ * async 组件只能在服务端执行，客户端导航时需要完整页面加载
+ */
+function isAsyncComponent(component: unknown): boolean {
+  if (!component || typeof component !== 'function') {
+    return false;
+  }
+
+  // 检查是否是 AsyncFunction
+  const fn = component as { constructor?: { name?: string } };
+  if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
+    return true;
+  }
+
+  // 检查函数字符串
+  const fnStr = component.toString();
+  if (fnStr.startsWith('async ') || fnStr.includes('async function')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 检查模块是否包含 async 组件
+ * 递归检查模块中的所有导出，查找 async 函数组件
+ *
+ * 注意：只检测可能是 React 组件的导出（首字母大写的函数）
+ * 这样可以避免将 Server Actions 误判为 async 组件
+ */
+function moduleContainsAsyncComponents(mod: unknown): boolean {
+  if (!mod || typeof mod !== 'object') {
+    return false;
+  }
+
+  // 检查所有导出的值
+  for (const key in mod) {
+    const value = (mod as Record<string, unknown>)[key];
+
+    // 跳过 metadata 和其他非组件导出
+    if (
+      key === 'metadata' ||
+      key === 'generateMetadata' ||
+      key === 'serverOnly' ||
+      key === '__esModule' ||
+      key === 'default' // default 单独检测
+    ) {
+      continue;
+    }
+
+    // 只检查首字母大写的函数（React 组件命名约定）
+    // 这样可以避免将 camelCase 的 Server Actions 误判
+    if (
+      typeof value === 'function' &&
+      key[0] === key[0].toUpperCase() &&
+      isAsyncComponent(value)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * 启动开发服务器
  */
 export async function startDevServer(
@@ -67,9 +142,24 @@ export async function startDevServer(
 ): Promise<DevServerResult> {
   const { appDir, port = 3000, rootDir = process.cwd(), vite } = options;
 
-  // 创建路由器并扫描
+  // 创建页面路由器并扫描
   const router = new FileSystemRouter(appDir);
   await router.scan();
+
+  // 创建 API 路由器并扫描
+  const apiRouter = new ApiRouter(appDir);
+  await apiRouter.scan();
+
+  // 打印发现的 API 路由
+  const apiRoutes = apiRouter.getRoutes();
+  if (apiRoutes.length > 0) {
+    console.log(`  API routes:`);
+    for (const route of apiRoutes) {
+      const method = route.method || 'ALL';
+      console.log(`    ${method.padEnd(6)} ${route.pattern}`);
+    }
+    console.log('');
+  }
 
   // 创建 h3 应用
   const app = createApp();
@@ -96,6 +186,183 @@ export async function startDevServer(
         });
       }
       return undefined;
+    })
+  );
+
+  // Server Actions 处理器 - 处理 /_actions 请求
+  app.use(
+    defineEventHandler(async (event) => {
+      const url = getRequestURL(event);
+
+      // 只处理 /_actions 请求
+      if (url.pathname !== '/_actions') {
+        return; // 跳过，让后续处理器处理
+      }
+
+      const method = getMethod(event);
+
+      // Server Actions 只接受 POST 请求
+      if (method !== 'POST') {
+        throw createError({
+          statusCode: 405,
+          statusMessage: 'Method Not Allowed',
+        });
+      }
+
+      try {
+        // 读取请求体
+        const body = await readBody(event);
+        const actionRequest = body as ActionRequest;
+
+        // 处理 Server Action
+        const result = await handleServerAction(actionRequest, {
+          appDir,
+          vite,
+        });
+
+        // 返回结果
+        setResponseHeader(
+          event,
+          'Content-Type',
+          'application/json; charset=utf-8'
+        );
+        return JSON.stringify(result);
+      } catch (error) {
+        // 修复错误堆栈
+        if (error instanceof Error) {
+          vite.ssrFixStacktrace(error);
+        }
+
+        console.error('[Server Actions] Error:', error);
+
+        // 返回错误
+        return JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    })
+  );
+
+  // API 路由处理器 - 处理 /api/* 请求
+  app.use(
+    defineEventHandler(async (event) => {
+      const url = getRequestURL(event);
+
+      // 只处理 /api/ 开头的请求
+      if (!url.pathname.startsWith('/api/')) {
+        return; // 跳过，让后续处理器处理
+      }
+
+      const method = getMethod(event);
+
+      // 匹配 API 路由
+      const match = apiRouter.match(url.pathname, method);
+
+      if (!match) {
+        // 没有匹配的 API 路由，返回 404
+        throw createError({
+          statusCode: 404,
+          statusMessage: `API route not found: ${url.pathname}`,
+        });
+      }
+
+      try {
+        // 使用 Vite 加载 API 处理器模块（支持 HMR）
+        const mod = await vite.ssrLoadModule(match.route.filePath);
+
+        // 获取对应 HTTP 方法的具名导出
+        const handler = mod[method];
+
+        if (typeof handler !== 'function') {
+          throw createError({
+            statusCode: 405,
+            statusMessage: `Method ${method} not allowed for ${url.pathname}`,
+          });
+        }
+
+        // 构建 Web Request 对象
+        const req = event.node?.req as IncomingMessage | undefined;
+        if (!req) {
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Internal server error: missing request object',
+          });
+        }
+
+        // 构建完整 URL
+        const fullUrl = `${url.protocol}//${url.host}${url.pathname}${url.search}`;
+
+        // 构建 Request 对象
+        const requestInit: RequestInit = {
+          method,
+          headers: new Headers(req.headers as HeadersInit),
+        };
+
+        // 对于有 body 的请求，需要读取 body
+        if (method !== 'GET' && method !== 'HEAD') {
+          // 读取请求体
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) {
+            chunks.push(chunk);
+          }
+          const buffer = Buffer.concat(chunks);
+          requestInit.body = buffer.toString();
+        }
+
+        const request = new Request(fullUrl, requestInit) as RequestWithParams;
+
+        // 附加路由参数到 request 对象（作为自定义属性）
+        request.params = match.params;
+
+        // 执行处理器
+        const result = await handler(request);
+
+        // 处理返回值
+        if (result instanceof Response) {
+          // 标准 Response 对象
+          const body = await result.text();
+          const status = result.status;
+
+          // 复制响应头
+          result.headers.forEach((value, key) => {
+            setResponseHeader(event, key, value);
+          });
+
+          // 设置状态码
+          event.node.res.statusCode = status;
+
+          return body;
+        } else if (result !== undefined) {
+          // 自动 JSON 化
+          setResponseHeader(
+            event,
+            'Content-Type',
+            'application/json; charset=utf-8'
+          );
+          return JSON.stringify(result);
+        }
+
+        return;
+      } catch (error) {
+        // 修复错误堆栈
+        if (error instanceof Error) {
+          vite.ssrFixStacktrace(error);
+        }
+
+        // 如果是 h3 错误，直接抛出
+        if ((error as { statusCode?: number }).statusCode) {
+          throw error;
+        }
+
+        // 包装为 500 错误
+        throw createError({
+          statusCode: 500,
+          statusMessage:
+            error instanceof Error ? error.message : 'Internal Server Error',
+          cause: error,
+        });
+      }
     })
   );
 
@@ -223,6 +490,30 @@ export async function startDevServer(
         const isClientNavigation =
           getRequestHeader(event, 'x-lastjs-navigation') === 'true';
 
+        // 检查页面是否需要完整页面加载
+        // 自动检测：
+        // 1. 页面组件本身是 async 函数
+        // 2. 页面模块中包含任何 async 组件（可能是子组件）
+        // 3. 页面显式导出 serverOnly = true（用于服务端专属代码，如 process）
+        const PageComponent = pageMod.default;
+        const hasAsyncComponent = isAsyncComponent(PageComponent);
+        const hasAsyncSubComponents = moduleContainsAsyncComponents(pageMod);
+        const explicitServerOnly = pageMod.serverOnly === true;
+        const requireFullPageLoad =
+          hasAsyncComponent || hasAsyncSubComponents || explicitServerOnly;
+
+        // 调试日志
+        if (requireFullPageLoad) {
+          console.log(
+            `[Last.js] Server-only page detected: ${match.filePath}`,
+            {
+              hasAsyncComponent,
+              hasAsyncSubComponents,
+              explicitServerOnly,
+            }
+          );
+        }
+
         if (isClientNavigation) {
           // 客户端导航：返回 JSON 数据（包含 metadata）
           setResponseHeader(
@@ -238,6 +529,7 @@ export async function startDevServer(
             metadata,
             errorPath: clientErrorPath,
             loadingPath: clientLoadingPath,
+            requireFullPageLoad,
           });
         }
 
@@ -291,8 +583,20 @@ export async function startDevServer(
         // 生成 HTML 头部（只包含 DOCTYPE 和注入脚本的占位）
         const htmlHead = `<!DOCTYPE html>`;
 
+        // 对于 serverOnly 页面，仍然需要 hydration 来支持 Client Component
+        // 但需要标记这是 serverOnly 页面，让客户端知道如何处理
+        const isServerOnlyPage = requireFullPageLoad;
+
+        // 在 hydration 数据中添加 serverOnly 标记
+        const hydrationDataWithFlag = {
+          ...hydrationData,
+          serverOnly: isServerOnlyPage,
+        };
+
         // 生成 HTML 尾部（hydration 脚本）
-        const hydrationScript = generateHydrationScript(hydrationData);
+        const hydrationScript = generateHydrationScript(hydrationDataWithFlag);
+
+        // 所有页面都使用完整的客户端脚本
         const clientScript = `<script type="module" src="/@lastjs/client"></script>`;
 
         // 需要注入到 head 的内容

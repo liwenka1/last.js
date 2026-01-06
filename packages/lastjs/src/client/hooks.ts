@@ -37,13 +37,6 @@ const serverRouter: Router = {
 };
 
 /**
- * 空订阅函数（服务端使用）
- */
-function emptySubscribe() {
-  return () => {};
-}
-
-/**
  * 客户端订阅函数
  */
 function subscribe(callback: () => void): () => void {

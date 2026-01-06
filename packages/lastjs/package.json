@@ -36,10 +36,6 @@
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "default": "./dist/navigation/index.js"
-    },
-    "./rsc": {
-      "types": "./dist/rsc/index.d.ts",
-      "default": "./dist/rsc/index.js"
     }
   },
   "files": [
@@ -51,25 +47,23 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitejs/plugin-rsc": "^0.5.11",
-    "commander": "^12.1.0",
-    "h3": "^1.13.1",
+    "@vitejs/plugin-react": "^4.5.2",
+    "commander": "^14.0.0",
+    "h3": "^1.15.3",
     "pathe": "^2.0.3",
     "picocolors": "^1.1.1",
-    "rsc-html-stream": "^0.0.7",
     "vite": "^7.3.0"
   },
   "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@types/react": "^19.0.1",
-    "@types/react-dom": "^19.0.2",
-    "tsdown": "^0.9.2",
-    "typescript": "^5.7.2"
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "tsdown": "^0.19.0-beta.3",
+    "typescript": "^5.8.3"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -81,7 +75,8 @@
     "next",
     "app-router",
     "vite",
-    "lastjs"
+    "lastjs",
+    "streaming"
   ],
   "author": "",
   "license": "MIT",

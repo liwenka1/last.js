@@ -40,6 +40,14 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+
+    // 如果是 async 组件错误，回退到完整页面加载
+    const errorMessage = error?.message || '';
+    if (errorMessage.includes('async') && errorMessage.includes('Client Component')) {
+      console.log('[Last.js] Async component detected, falling back to full page load');
+      window.location.reload();
+      return;
+    }
   }
 
   reset = () => {
@@ -48,6 +56,12 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError && this.state.error) {
+      // 如果是 async 组件错误，显示加载中（等待 reload）
+      const errorMessage = this.state.error?.message || '';
+      if (errorMessage.includes('async') && errorMessage.includes('Client Component')) {
+        return React.createElement('div', { style: { padding: '2rem', textAlign: 'center' } }, 'Loading...');
+      }
+
       const FallbackComponent = this.props.fallback;
       return React.createElement(FallbackComponent, {
         error: this.state.error,
@@ -191,6 +205,12 @@ function isSameUrl(href) {
   return current === target;
 }
 
+// 正在导航中的标记
+let isNavigating = false;
+
+// 标记是否正在处理 async 组件错误（防止无限循环）
+let handlingAsyncError = false;
+
 // 全局路由器
 window.__LASTJS_ROUTER__ = {
   push: async (href) => {
@@ -198,16 +218,28 @@ window.__LASTJS_ROUTER__ = {
     if (isSameUrl(href)) {
       return;
     }
+    // 防止重复导航
+    if (isNavigating) {
+      return;
+    }
+    isNavigating = true;
     window.history.pushState(null, '', href);
     await loadPage(href);
+    isNavigating = false;
   },
   replace: async (href) => {
     // 如果目标 URL 与当前 URL 相同，跳过导航
     if (isSameUrl(href)) {
       return;
     }
+    // 防止重复导航
+    if (isNavigating) {
+      return;
+    }
+    isNavigating = true;
     window.history.replaceState(null, '', href);
     await loadPage(href);
+    isNavigating = false;
   },
   back: () => window.history.back(),
   forward: () => window.history.forward(),
@@ -218,12 +250,28 @@ window.__LASTJS_ROUTER__ = {
     document.head.appendChild(link);
   },
   refresh: async () => {
-    await loadPage(window.location.pathname + window.location.search);
+    // refresh 总是使用完整页面加载
+    window.location.reload();
   },
 };
 
 // Root 引用
 let root = null;
+
+// 检查组件是否是 async 函数
+function isAsyncFunction(fn) {
+  if (!fn) return false;
+  // 检查是否是 async function
+  if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
+    return true;
+  }
+  // 检查函数字符串
+  const fnStr = fn.toString();
+  if (fnStr.startsWith('async ') || fnStr.includes('async function')) {
+    return true;
+  }
+  return false;
+}
 
 // 加载页面
 async function loadPage(href) {
@@ -246,6 +294,13 @@ async function loadPage(href) {
     // 如果返回 JSON，说明是导航数据
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
+
+      // 如果服务端标记需要完整页面加载（包含 async 组件或服务端专属代码）
+      if (data.requireFullPageLoad) {
+        window.location.href = href;
+        return;
+      }
+
       const { props, layoutPaths, pagePath, params, metadata, errorPath, loadingPath } = data;
 
       // 加载模块
@@ -256,6 +311,13 @@ async function loadPage(href) {
 
       const layouts = layoutModules.map(mod => mod.default || mod);
       const Page = pageModule.default || pageModule;
+
+      // 检查页面组件是否是 async 函数
+      if (isAsyncFunction(Page)) {
+        console.log('[Last.js] Page contains async component, falling back to full page load');
+        window.location.href = href;
+        return;
+      }
 
       // 加载 error 和 loading 组件（如果存在）
       let ErrorComponent = null;
@@ -303,6 +365,9 @@ async function loadPage(href) {
   }
 }
 
+// 标记当前页面是否为 serverOnly
+let isServerOnlyPage = false;
+
 // 初始 hydration
 async function hydrate() {
   const data = window.__LASTJS_DATA__;
@@ -311,7 +376,29 @@ async function hydrate() {
     return;
   }
 
-  const { props, layoutPaths, pagePath, params, errorPath, loadingPath } = data;
+  const { props, layoutPaths, pagePath, params, errorPath, loadingPath, serverOnly } = data;
+
+  // 记录是否为 serverOnly 页面
+  isServerOnlyPage = serverOnly || false;
+
+  // 对于 serverOnly 页面，不进行完整的 React hydration
+  // 因为这些页面包含 async 子组件，在客户端无法执行
+  // 只设置基本的导航功能
+  if (isServerOnlyPage) {
+    console.log('[Last.js] Server-only page detected, skipping React hydration');
+
+    // 更新全局状态
+    window.__LASTJS_STATE__ = {
+      pathname: window.location.pathname,
+      params: params || {},
+      searchParams: new URLSearchParams(window.location.search),
+    };
+
+    // 设置导航拦截（使用事件委托）
+    // 对于 serverOnly 页面，所有导航都使用完整页面加载
+    console.log('[Last.js] Navigation ready (server-only mode) ✓');
+    return;
+  }
 
   try {
     // 动态导入所有 layout 和 page 组件
@@ -349,7 +436,17 @@ async function hydrate() {
     });
 
     // Hydrate - 由于 layout 渲染了完整的 HTML 结构，我们 hydrate 到 document
-    root = hydrateRoot(document, element);
+    root = hydrateRoot(document, element, {
+      onRecoverableError(error) {
+        // 忽略 async 组件相关的错误
+        const errorMessage = error?.message || '';
+        if (errorMessage.includes('async') && errorMessage.includes('Client Component')) {
+          // 静默忽略 - async 组件已在服务端渲染，客户端不需要重新渲染
+          return;
+        }
+        console.error('[Last.js] Recoverable error:', error);
+      },
+    });
     console.log('[Last.js] Hydration complete ✓');
   } catch (error) {
     console.error('[Last.js] Hydration failed:', error);
@@ -358,7 +455,32 @@ async function hydrate() {
 
 // 监听浏览器前进/后退
 window.addEventListener('popstate', () => {
-  loadPage(window.location.pathname + window.location.search);
+  if (isNavigating) return;
+  isNavigating = true;
+  loadPage(window.location.pathname + window.location.search).finally(() => {
+    isNavigating = false;
+  });
+});
+
+// 全局错误处理器 - 捕获 async 组件错误
+window.addEventListener('error', (event) => {
+  if (handlingAsyncError) return; // 防止无限循环
+
+  const errorMessage = event.error?.message || event.message || '';
+  if (errorMessage.includes('async') && errorMessage.includes('Client Component')) {
+    // 对于 serverOnly 页面，静默忽略 async 组件错误
+    // 因为这些组件已在服务端渲染，客户端只需要保留服务端的 HTML
+    if (isServerOnlyPage) {
+      event.preventDefault();
+      return;
+    }
+
+    // 对于非 serverOnly 页面，回退到完整页面加载
+    handlingAsyncError = true;
+    console.log('[Last.js] Async component error detected, forcing full page load...');
+    event.preventDefault();
+    window.location.assign(window.location.href);
+  }
 });
 
 // 等待 DOM 加载完成后执行 hydration

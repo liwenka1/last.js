@@ -1,12 +1,14 @@
-// 这是一个 Server Component（没有 'use client'）
-// 可以使用 async/await 直接获取数据！
+// Server Component - 展示 async 组件和流式渲染
 
 import { Suspense } from 'react';
 
 export const metadata = {
-  title: 'RSC 演示 - Last.js',
-  description: '真正的 React Server Components 演示',
+  title: 'Async 组件演示 - Last.js',
+  description: '展示 async 组件和 Suspense 流式渲染',
 };
+
+// 标记此页面包含 async 子组件，需要完整页面加载
+export const serverOnly = true;
 
 // 模拟服务端数据获取
 async function fetchServerData(delay: number, name: string): Promise<string> {
@@ -17,7 +19,7 @@ async function fetchServerData(delay: number, name: string): Promise<string> {
   return `${name} - 服务器时间: ${time}`;
 }
 
-// 异步 Server Component - 2秒延迟
+// Async Server Component - 2秒延迟
 async function SlowData1() {
   const data = await fetchServerData(2000, '数据块1');
   return (
@@ -30,16 +32,16 @@ async function SlowData1() {
         border: '2px solid #4caf50',
       }}
     >
-      <strong>✅ Server Component 数据</strong>
+      <strong>✅ Async Component 数据</strong>
       <p style={{ margin: '0.5rem 0 0 0' }}>{data}</p>
       <small style={{ color: '#666' }}>
-        这个组件在服务端执行 async/await，客户端不会重新执行！
+        这个组件在服务端执行 async/await，然后流式发送到客户端
       </small>
     </div>
   );
 }
 
-// 异步 Server Component - 3秒延迟
+// Async Server Component - 3秒延迟
 async function SlowData2() {
   const data = await fetchServerData(3000, '数据块2');
   return (
@@ -52,10 +54,10 @@ async function SlowData2() {
         border: '2px solid #2196f3',
       }}
     >
-      <strong>✅ Server Component 数据</strong>
+      <strong>✅ Async Component 数据</strong>
       <p style={{ margin: '0.5rem 0 0 0' }}>{data}</p>
       <small style={{ color: '#666' }}>
-        这个数据只在服务端获取，不会暴露给客户端 JavaScript
+        数据在服务端获取，HTML 通过流式传输逐步发送
       </small>
     </div>
   );
@@ -76,9 +78,12 @@ function LoadingSkeleton({ label }: { label: string }) {
         gap: '0.5rem',
       }}
     >
-      <span style={{ animation: 'pulse 1s infinite' }}>⏳</span>
+      <span className="loading-spinner">⏳</span>
       <span>{label}</span>
       <style>{`
+        .loading-spinner {
+          animation: pulse 1s infinite;
+        }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
@@ -88,11 +93,11 @@ function LoadingSkeleton({ label }: { label: string }) {
   );
 }
 
-// 主页面组件 - 也是 Server Component
+// 主页面组件
 export default function SlowPage() {
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-      <h1>🚀 React Server Components 演示</h1>
+      <h1>⏱️ Async 组件演示</h1>
 
       <div
         style={{
@@ -104,7 +109,7 @@ export default function SlowPage() {
         }}
       >
         <h2 style={{ margin: '0 0 0.5rem 0', color: '#7b1fa2' }}>
-          🎉 这是真正的 RSC！
+          🎉 SSR + Streaming
         </h2>
         <p style={{ margin: 0 }}>
           <strong>这段文字立即显示</strong>，因为它是页面的 "shell"。
@@ -133,24 +138,19 @@ export default function SlowPage() {
           borderRadius: '8px',
         }}
       >
-        <h3 style={{ margin: '0 0 0.5rem 0' }}>💡 RSC 的优势</h3>
+        <h3 style={{ margin: '0 0 0.5rem 0' }}>💡 工作原理</h3>
         <ul style={{ margin: 0, paddingLeft: '1.5rem' }}>
           <li>
-            <strong>async 组件</strong> - 可以直接在组件中使用 async/await
+            <strong>Async 组件</strong> - 可以直接在组件中使用 async/await
           </li>
           <li>
-            <strong>服务端执行</strong> - 数据获取在服务端完成，不暴露给客户端
+            <strong>服务端执行</strong> - 数据获取在服务端完成
           </li>
           <li>
             <strong>流式渲染</strong> - 页面 shell 立即显示，数据逐步填充
           </li>
           <li>
-            <strong>零客户端 JS</strong> - Server Component
-            的代码不会发送到客户端
-          </li>
-          <li>
-            <strong>无 Hydration 重复执行</strong> - 客户端不会重新执行 async
-            组件
+            <strong>Suspense 边界</strong> - 每个 Suspense 定义一个流式单元
           </li>
         </ul>
       </div>
@@ -165,10 +165,10 @@ export default function SlowPage() {
       >
         <h3 style={{ margin: '0 0 0.5rem 0' }}>🔍 如何验证？</h3>
         <ol style={{ margin: 0, paddingLeft: '1.5rem' }}>
-          <li>查看终端日志 - 只有服务端输出 "[Server]" 日志</li>
-          <li>打开浏览器控制台 - 不会看到 "[Server]" 日志</li>
-          <li>刷新页面 - 每次都会看到服务端重新获取数据</li>
-          <li>查看 Network - HTML 文档会逐步增大（流式传输）</li>
+          <li>查看终端日志 - 会看到 "[Server]" 日志输出</li>
+          <li>打开浏览器 Network 面板 - HTML 文档会逐步增大</li>
+          <li>观察页面 - shell 先显示，数据块逐个出现</li>
+          <li>刷新页面 - 每次都会重新执行服务端数据获取</li>
         </ol>
       </div>
     </div>

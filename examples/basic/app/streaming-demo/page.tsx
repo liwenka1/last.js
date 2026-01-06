@@ -1,12 +1,12 @@
-// 流式渲染对比演示页面
-// 这个页面让你直观感受 流式渲染 vs 阻塞渲染 的区别
+// 流式渲染演示页面
+// 展示 Suspense 如何实现流式 HTML 响应
 
 import { Suspense } from 'react';
 import { Link } from 'lastjs/client';
 
 export const metadata = {
-  title: '流式渲染对比演示 - Last.js',
-  description: '直观感受流式渲染和阻塞渲染的区别',
+  title: '流式渲染演示 - Last.js',
+  description: '直观感受流式渲染的效果',
 };
 
 // ========== 模拟数据获取 ==========
@@ -80,7 +80,7 @@ function DataCard({
   );
 }
 
-// ========== 异步数据组件（流式渲染用）==========
+// ========== Async 数据组件 ==========
 
 async function AsyncDataBlock1() {
   const data = await fetchData(1, 1000); // 1秒
@@ -204,7 +204,7 @@ export default function StreamingDemoPage() {
             <li>页面框架立即显示</li>
             <li>数据块按完成顺序逐个出现</li>
             <li>用户可以先看到部分内容</li>
-            <li>总感知时间 ≈ 最慢的数据块时间</li>
+            <li>更好的用户体验</li>
           </ul>
         </div>
 
@@ -222,7 +222,7 @@ export default function StreamingDemoPage() {
           <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.9rem' }}>
             <li>整个页面等待所有数据</li>
             <li>用户看到白屏直到全部完成</li>
-            <li>总等待时间 = 所有数据时间之和</li>
+            <li>总等待时间 = 最慢的数据</li>
             <li>
               <Link
                 href="/streaming-demo/blocking"
@@ -275,7 +275,7 @@ export default function StreamingDemoPage() {
           borderRadius: '12px',
         }}
       >
-        <h3 style={{ margin: '0 0 1rem 0' }}>⏱️ 时间线对比</h3>
+        <h3 style={{ margin: '0 0 1rem 0' }}>⏱️ 时间线</h3>
 
         <div style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>
           <div style={{ marginBottom: '1rem' }}>
@@ -286,6 +286,7 @@ export default function StreamingDemoPage() {
                 alignItems: 'center',
                 gap: '4px',
                 marginTop: '0.5rem',
+                flexWrap: 'wrap',
               }}
             >
               <span
@@ -337,40 +338,6 @@ export default function StreamingDemoPage() {
                 }}
               >
                 块4 4s
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <strong>阻塞渲染：</strong>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                marginTop: '0.5rem',
-              }}
-            >
-              <span
-                style={{
-                  background: '#f44336',
-                  color: 'white',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                }}
-              >
-                白屏等待 0-4s
-              </span>
-              <span>→</span>
-              <span
-                style={{
-                  background: '#4caf50',
-                  color: 'white',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                }}
-              >
-                全部显示 4s
               </span>
             </div>
           </div>

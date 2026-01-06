@@ -80,6 +80,9 @@ export interface RouteModule {
     params: Record<string, string>;
     searchParams?: Record<string, string | string[]>;
   }) => Promise<Metadata> | Metadata;
+
+  /** 标记页面只能在服务端渲染（包含 async 组件或服务端专属代码） */
+  serverOnly?: boolean;
 }
 
 /**

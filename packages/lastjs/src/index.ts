@@ -12,6 +12,8 @@ export type {
 export {
   renderComponent,
   renderWithLayouts,
+  renderToStream,
+  buildComponentTree,
   generateHTML,
   wrapWithDoctype,
   generateHydrationScript,
@@ -20,7 +22,13 @@ export {
   getViteHMRScripts,
   renderMetadataToHTML,
 } from './render/index.js';
-export type { RenderOptions, HydrationData } from './render/index.js';
+export type {
+  RenderOptions,
+  HydrationData,
+  StreamRenderOptions,
+  StreamRenderResult,
+  RenderWithLayoutsOptions,
+} from './render/index.js';
 
 // Server
 export { startDevServer } from './server/index.js';
