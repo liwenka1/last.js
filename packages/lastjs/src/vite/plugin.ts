@@ -348,12 +348,9 @@ async function hydrate() {
       LoadingComponent,
     });
 
-    // Hydrate
-    const container = document.getElementById('__lastjs');
-    if (container) {
-      root = hydrateRoot(container, element);
-      console.log('[Last.js] Hydration complete ✓');
-    }
+    // Hydrate - 由于 layout 渲染了完整的 HTML 结构，我们 hydrate 到 document
+    root = hydrateRoot(document, element);
+    console.log('[Last.js] Hydration complete ✓');
   } catch (error) {
     console.error('[Last.js] Hydration failed:', error);
   }

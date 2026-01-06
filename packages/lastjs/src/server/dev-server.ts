@@ -16,10 +16,13 @@ import { FileSystemRouter } from '../router/fs-router.js';
 import type { Metadata, RouteModule } from '../router/types.js';
 import {
   renderWithLayouts,
+  renderToStream,
   wrapWithDoctype,
   generate404HTML,
   generateErrorHTML,
   getViteHMRScripts,
+  generateHydrationScript,
+  renderMetadataToHTML,
 } from '../render/index.js';
 import { isNotFoundError } from '../navigation/index.js';
 
@@ -246,7 +249,11 @@ export async function startDevServer(
         }
 
         // 获取页面组件（pageMod 已在上面加载）
-        const Page: PageComponent = pageMod.default!;
+        const Page: PageComponent | undefined = pageMod.default;
+
+        if (!Page) {
+          throw new Error(`Page component not found: ${match.filePath}`);
+        }
 
         // 加载 loading 组件（如果存在）
         let Loading: ComponentType | undefined;
@@ -267,30 +274,98 @@ export async function startDevServer(
         // 加载 ErrorBoundary 组件
         const { ErrorBoundary } = await import('../client/error-boundary.js');
 
-        // 渲染带有 layout 嵌套的页面
-        const content = renderWithLayouts(layouts, Page, pageProps, {
+        // 准备 hydration 数据
+        const hydrationData = {
+          props: pageProps,
+          layoutPaths: clientLayoutPaths,
+          pagePath: clientPagePath,
+          params: match.params,
+          errorPath: clientErrorPath,
+          loadingPath: clientLoadingPath,
+        };
+
+        // 生成注入到 head 的脚本
+        const metadataTags = metadata ? renderMetadataToHTML(metadata) : '';
+        const viteScripts = getViteHMRScripts();
+
+        // 生成 HTML 头部（只包含 DOCTYPE 和注入脚本的占位）
+        const htmlHead = `<!DOCTYPE html>`;
+
+        // 生成 HTML 尾部（hydration 脚本）
+        const hydrationScript = generateHydrationScript(hydrationData);
+        const clientScript = `<script type="module" src="/@lastjs/client"></script>`;
+
+        // 需要注入到 head 的内容
+        const headInjection = `${metadataTags}\n${viteScripts}`;
+
+        // 需要注入到 body 末尾的内容
+        const bodyInjection = `${hydrationScript}\n${clientScript}`;
+
+        // 用于在流式输出中注入内容
+        let headInjected = false;
+        let bodyInjected = false;
+
+        // 设置响应头 - 流式传输需要的头
+        setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');
+        setResponseHeader(event, 'Transfer-Encoding', 'chunked');
+        setResponseHeader(event, 'X-Content-Type-Options', 'nosniff');
+
+        // 获取原始响应对象
+        const res = event.node.res;
+
+        // 禁用 Node.js 的响应缓冲
+        res.flushHeaders();
+
+        // 创建一个 Transform 流来注入内容
+        const { Transform } = await import('node:stream');
+        const injectStream = new Transform({
+          transform(chunk: Buffer, _encoding, callback) {
+            let html = chunk.toString();
+
+            // 注入到 </head> 之前
+            if (!headInjected && html.includes('</head>')) {
+              html = html.replace('</head>', `${headInjection}</head>`);
+              headInjected = true;
+            }
+
+            // 注入到 </body> 之前
+            if (!bodyInjected && html.includes('</body>')) {
+              html = html.replace('</body>', `${bodyInjection}</body>`);
+              bodyInjected = true;
+            }
+
+            callback(null, html);
+          },
+        });
+
+        // 先发送 DOCTYPE
+        res.write(htmlHead);
+
+        // 将转换后的内容发送到响应
+        injectStream.pipe(res);
+
+        // 使用流式渲染
+        const stream = renderToStream(layouts, Page, pageProps, {
           Loading,
           ErrorComponent,
           ErrorBoundary,
-        });
-
-        // 包装为完整 HTML 文档，注入 hydration 数据和 metadata
-        const html = wrapWithDoctype(content, {
-          viteScripts: getViteHMRScripts(),
-          hydrationData: {
-            props: pageProps,
-            layoutPaths: clientLayoutPaths,
-            pagePath: clientPagePath,
-            params: match.params,
-            errorPath: clientErrorPath,
-            loadingPath: clientLoadingPath,
+          onShellReady() {
+            // Shell 准备好后，开始流式传输
+            stream.pipe(injectStream);
           },
-          clientEntry: '/@lastjs/client',
-          metadata,
+          onShellError(error) {
+            // Shell 渲染失败，发送错误页面
+            console.error('Shell render error:', error);
+            res.statusCode = 500;
+            res.end(generateErrorHTML(error));
+          },
+          onError(error) {
+            console.error('Streaming render error:', error);
+          },
         });
 
-        setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');
-        return html;
+        // 返回 undefined 表示我们已经手动处理了响应
+        return;
       } catch (error) {
         // 检查是否为 notFound() 抛出的错误
         if (isNotFoundError(error)) {

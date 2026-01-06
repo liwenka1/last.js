@@ -9,6 +9,7 @@ export default defineConfig({
     'server/index': 'src/server/index.ts',
     'vite/index': 'src/vite/index.ts',
     'navigation/index': 'src/navigation/index.ts',
+    'rsc/index': 'src/rsc/index.ts',
     cli: 'src/cli/cli.ts',
   },
   format: ['esm'],

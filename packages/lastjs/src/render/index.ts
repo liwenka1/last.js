@@ -1,5 +1,6 @@
 import * as React from 'react';
 import * as ReactDOMServer from 'react-dom/server';
+import type { Writable } from 'node:stream';
 import type { Metadata } from '../router/types.js';
 
 export interface RenderOptions {
@@ -96,6 +97,94 @@ export function renderWithLayouts(
   }
 
   return ReactDOMServer.renderToString(element);
+}
+
+/**
+ * 流式渲染选项
+ */
+export interface StreamRenderOptions extends RenderWithLayoutsOptions {
+  /** 渲染完成回调 */
+  onAllReady?: () => void;
+  /** Shell 准备好回调（首次可渲染内容） */
+  onShellReady?: () => void;
+  /** Shell 错误回调 */
+  onShellError?: (error: Error) => void;
+  /** 错误回调 */
+  onError?: (error: Error) => void;
+}
+
+/**
+ * 流式渲染结果
+ */
+export interface StreamRenderResult {
+  /** 将内容 pipe 到可写流 */
+  pipe: (writable: Writable) => Writable;
+  /** 中止渲染 */
+  abort: () => void;
+}
+
+/**
+ * 构建组件树（不渲染）
+ */
+export function buildComponentTree(
+  layouts: React.ComponentType<{ children: React.ReactNode }>[],
+  Page: React.ComponentType<Record<string, unknown>>,
+  props: Record<string, unknown>,
+  options?: RenderWithLayoutsOptions
+): React.ReactElement {
+  const opts = options || {};
+  const { Loading, ErrorComponent, ErrorBoundary } = opts;
+
+  // 从页面开始构建组件树
+  let element: React.ReactElement = React.createElement(Page, props);
+
+  // 如果有 Loading 组件，用 Suspense 包裹页面
+  if (Loading) {
+    element = React.createElement(
+      React.Suspense,
+      { fallback: React.createElement(Loading) },
+      element
+    );
+  }
+
+  // 如果有 Error 组件和 ErrorBoundary，用 ErrorBoundary 包裹
+  if (ErrorComponent && ErrorBoundary) {
+    element = React.createElement(
+      ErrorBoundary,
+      { fallback: ErrorComponent },
+      element
+    );
+  }
+
+  // 从内到外包裹 layout（反向遍历）
+  for (let i = layouts.length - 1; i >= 0; i--) {
+    const Layout = layouts[i];
+    element = React.createElement(Layout, { children: element });
+  }
+
+  return element;
+}
+
+/**
+ * 流式渲染带有 Layout 嵌套的页面
+ * 使用 renderToPipeableStream 支持 Suspense 和流式传输
+ */
+export function renderToStream(
+  layouts: React.ComponentType<{ children: React.ReactNode }>[],
+  Page: React.ComponentType<Record<string, unknown>>,
+  props: Record<string, unknown>,
+  options?: StreamRenderOptions
+): StreamRenderResult {
+  const element = buildComponentTree(layouts, Page, props, options);
+
+  const { onAllReady, onShellReady, onShellError, onError } = options || {};
+
+  return ReactDOMServer.renderToPipeableStream(element, {
+    onAllReady,
+    onShellReady,
+    onShellError,
+    onError,
+  });
 }
 
 /**

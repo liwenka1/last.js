@@ -9,6 +9,7 @@ export function Nav() {
     { href: '/', label: 'Home', exact: true },
     { href: '/about', label: 'About', exact: true },
     { href: '/blog/hello-world', label: 'Blog', exact: false }, // 匹配所有 /blog/* 路径
+    { href: '/streaming-demo', label: '🌊 流式渲染', exact: false }, // 流式渲染演示
   ];
 
   // 判断链接是否激活
