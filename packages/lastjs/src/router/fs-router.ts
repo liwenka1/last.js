@@ -110,6 +110,22 @@ export class FileSystemRouter {
   }
 
   /**
+   * 获取最近的 loading 组件路径（从当前节点向上查找）
+   */
+  getLoadingPath(node: RouteNode): string | undefined {
+    let current: RouteNode | undefined = node;
+
+    while (current) {
+      if (current.files.loading) {
+        return current.files.loading;
+      }
+      current = current.parent;
+    }
+
+    return undefined;
+  }
+
+  /**
    * 获取所有路由
    */
   getRoutes(): Array<{ path: string; filePath: string }> {

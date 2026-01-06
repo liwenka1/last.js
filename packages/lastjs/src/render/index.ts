@@ -38,14 +38,25 @@ export function renderComponent(
  * @param layouts - Layout 组件数组（从根到叶）
  * @param Page - 页面组件
  * @param props - 传递给页面的 props
+ * @param Loading - 可选的 Loading 组件
  */
 export function renderWithLayouts(
   layouts: React.ComponentType<{ children: React.ReactNode }>[],
   Page: React.ComponentType<Record<string, unknown>>,
-  props: Record<string, unknown>
+  props: Record<string, unknown>,
+  Loading?: React.ComponentType
 ): string {
   // 从页面开始构建组件树
   let element: React.ReactElement = React.createElement(Page, props);
+
+  // 如果有 Loading 组件，用 Suspense 包裹页面
+  if (Loading) {
+    element = React.createElement(
+      React.Suspense,
+      { fallback: React.createElement(Loading) },
+      element
+    );
+  }
 
   // 从内到外包裹 layout（反向遍历）
   for (let i = layouts.length - 1; i >= 0; i--) {

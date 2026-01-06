@@ -1,4 +1,4 @@
-import { notFound } from 'lastjs/navigation';
+import { notFound } from 'lastjs';
 
 interface PageProps {
   params: {

@@ -10,7 +10,7 @@ import {
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ViteDevServer } from 'vite';
-import type { ReactNode } from 'react';
+import type { ReactNode, ComponentType } from 'react';
 import { relative } from 'pathe';
 import { FileSystemRouter } from '../router/fs-router.js';
 import type { Metadata, RouteModule } from '../router/types.js';
@@ -236,8 +236,16 @@ export async function startDevServer(
         // 获取页面组件（pageMod 已在上面加载）
         const Page: PageComponent = pageMod.default!;
 
+        // 加载 loading 组件（如果存在）
+        let Loading: ComponentType | undefined;
+        const loadingPath = router.getLoadingPath(match.node);
+        if (loadingPath) {
+          const loadingMod = await vite.ssrLoadModule(loadingPath);
+          Loading = loadingMod.default;
+        }
+
         // 渲染带有 layout 嵌套的页面
-        const content = renderWithLayouts(layouts, Page, pageProps);
+        const content = renderWithLayouts(layouts, Page, pageProps, Loading);
 
         // 包装为完整 HTML 文档，注入 hydration 数据和 metadata
         const html = wrapWithDoctype(content, {
