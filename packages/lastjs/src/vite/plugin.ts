@@ -27,9 +27,61 @@ async function loadModule(path) {
   return mod;
 }
 
+// ErrorBoundary 类组件
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  reset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError && this.state.error) {
+      const FallbackComponent = this.props.fallback;
+      return React.createElement(FallbackComponent, {
+        error: this.state.error,
+        reset: this.reset,
+      });
+    }
+    return this.props.children;
+  }
+}
+
 // 构建组件树
-function buildComponentTree(layouts, Page, props) {
+function buildComponentTree(layouts, Page, props, options = {}) {
+  const { ErrorComponent, LoadingComponent } = options;
+
   let element = React.createElement(Page, props);
+
+  // 如果有 Loading 组件，用 Suspense 包裹
+  if (LoadingComponent) {
+    element = React.createElement(
+      React.Suspense,
+      { fallback: React.createElement(LoadingComponent) },
+      element
+    );
+  }
+
+  // 如果有 Error 组件，用 ErrorBoundary 包裹
+  if (ErrorComponent) {
+    element = React.createElement(
+      ErrorBoundary,
+      { fallback: ErrorComponent },
+      element
+    );
+  }
+
   for (let i = layouts.length - 1; i >= 0; i--) {
     const Layout = layouts[i];
     element = React.createElement(Layout, { children: element });
@@ -71,8 +123,8 @@ function updateMetadata(metadata) {
 
   // 更新 title
   if (metadata.title) {
-    const title = typeof metadata.title === 'string' 
-      ? metadata.title 
+    const title = typeof metadata.title === 'string'
+      ? metadata.title
       : metadata.title.default;
     document.title = title;
   }
@@ -84,8 +136,8 @@ function updateMetadata(metadata) {
 
   // 更新 keywords
   if (metadata.keywords !== undefined) {
-    const keywords = Array.isArray(metadata.keywords) 
-      ? metadata.keywords.join(', ') 
+    const keywords = Array.isArray(metadata.keywords)
+      ? metadata.keywords.join(', ')
       : metadata.keywords;
     updateMetaTag('keywords', keywords);
   }
@@ -194,7 +246,7 @@ async function loadPage(href) {
     // 如果返回 JSON，说明是导航数据
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
-      const { props, layoutPaths, pagePath, params, metadata } = data;
+      const { props, layoutPaths, pagePath, params, metadata, errorPath, loadingPath } = data;
 
       // 加载模块
       const layoutModules = await Promise.all(
@@ -204,6 +256,18 @@ async function loadPage(href) {
 
       const layouts = layoutModules.map(mod => mod.default || mod);
       const Page = pageModule.default || pageModule;
+
+      // 加载 error 和 loading 组件（如果存在）
+      let ErrorComponent = null;
+      let LoadingComponent = null;
+      if (errorPath) {
+        const errorMod = await loadModule(errorPath);
+        ErrorComponent = errorMod.default || errorMod;
+      }
+      if (loadingPath) {
+        const loadingMod = await loadModule(loadingPath);
+        LoadingComponent = loadingMod.default || loadingMod;
+      }
 
       // 更新全局状态
       const url = new URL(href, window.location.origin);
@@ -220,7 +284,10 @@ async function loadPage(href) {
       notifySubscribers();
 
       // 重新渲染
-      const element = buildComponentTree(layouts, Page, props);
+      const element = buildComponentTree(layouts, Page, props, {
+        ErrorComponent,
+        LoadingComponent,
+      });
 
       if (root) {
         root.render(element);
@@ -244,7 +311,7 @@ async function hydrate() {
     return;
   }
 
-  const { props, layoutPaths, pagePath, params } = data;
+  const { props, layoutPaths, pagePath, params, errorPath, loadingPath } = data;
 
   try {
     // 动态导入所有 layout 和 page 组件
@@ -256,6 +323,18 @@ async function hydrate() {
     const layouts = layoutModules.map(mod => mod.default || mod);
     const Page = pageModule.default || pageModule;
 
+    // 加载 error 和 loading 组件（如果存在）
+    let ErrorComponent = null;
+    let LoadingComponent = null;
+    if (errorPath) {
+      const errorMod = await loadModule(errorPath);
+      ErrorComponent = errorMod.default || errorMod;
+    }
+    if (loadingPath) {
+      const loadingMod = await loadModule(loadingPath);
+      LoadingComponent = loadingMod.default || loadingMod;
+    }
+
     // 更新全局状态
     window.__LASTJS_STATE__ = {
       pathname: window.location.pathname,
@@ -264,7 +343,10 @@ async function hydrate() {
     };
 
     // 构建组件树
-    const element = buildComponentTree(layouts, Page, props);
+    const element = buildComponentTree(layouts, Page, props, {
+      ErrorComponent,
+      LoadingComponent,
+    });
 
     // Hydrate
     const container = document.getElementById('__lastjs');

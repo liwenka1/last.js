@@ -126,6 +126,29 @@ export class FileSystemRouter {
   }
 
   /**
+   * 获取最近的 error 组件路径（从当前节点向上查找）
+   */
+  getErrorPath(node: RouteNode): string | undefined {
+    let current: RouteNode | undefined = node;
+
+    while (current) {
+      if (current.files.error) {
+        return current.files.error;
+      }
+      current = current.parent;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 获取根节点的 error 组件路径
+   */
+  getRootErrorPath(): string | undefined {
+    return this.root.files.error;
+  }
+
+  /**
    * 获取所有路由
    */
   getRoutes(): Array<{ path: string; filePath: string }> {

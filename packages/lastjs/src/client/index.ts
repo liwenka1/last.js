@@ -13,6 +13,10 @@
 export { Link } from './link.js';
 export type { LinkProps } from './link.js';
 
+// Error Boundary
+export { ErrorBoundary } from './error-boundary.js';
+export type { ErrorBoundaryProps } from './error-boundary.js';
+
 // Hooks
 export { useRouter, usePathname, useParams, useSearchParams } from './hooks.js';
 

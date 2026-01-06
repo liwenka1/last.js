@@ -206,6 +206,16 @@ export async function startDevServer(
           metadata = pageMod.metadata;
         }
 
+        // 获取 error 和 loading 路径
+        const errorPath = router.getErrorPath(match.node);
+        const loadingPath = router.getLoadingPath(match.node);
+        const clientErrorPath = errorPath
+          ? toClientPath(errorPath, rootDir)
+          : undefined;
+        const clientLoadingPath = loadingPath
+          ? toClientPath(loadingPath, rootDir)
+          : undefined;
+
         // 检查是否为客户端导航请求
         const isClientNavigation =
           getRequestHeader(event, 'x-lastjs-navigation') === 'true';
@@ -222,7 +232,9 @@ export async function startDevServer(
             layoutPaths: clientLayoutPaths,
             pagePath: clientPagePath,
             params: match.params,
-            metadata, // 包含 metadata
+            metadata,
+            errorPath: clientErrorPath,
+            loadingPath: clientLoadingPath,
           });
         }
 
@@ -238,14 +250,29 @@ export async function startDevServer(
 
         // 加载 loading 组件（如果存在）
         let Loading: ComponentType | undefined;
-        const loadingPath = router.getLoadingPath(match.node);
         if (loadingPath) {
           const loadingMod = await vite.ssrLoadModule(loadingPath);
           Loading = loadingMod.default;
         }
 
+        // 加载 error 组件（如果存在）
+        let ErrorComponent:
+          | ComponentType<{ error: Error; reset: () => void }>
+          | undefined;
+        if (errorPath) {
+          const errorMod = await vite.ssrLoadModule(errorPath);
+          ErrorComponent = errorMod.default;
+        }
+
+        // 加载 ErrorBoundary 组件
+        const { ErrorBoundary } = await import('../client/error-boundary.js');
+
         // 渲染带有 layout 嵌套的页面
-        const content = renderWithLayouts(layouts, Page, pageProps, Loading);
+        const content = renderWithLayouts(layouts, Page, pageProps, {
+          Loading,
+          ErrorComponent,
+          ErrorBoundary,
+        });
 
         // 包装为完整 HTML 文档，注入 hydration 数据和 metadata
         const html = wrapWithDoctype(content, {
@@ -255,6 +282,8 @@ export async function startDevServer(
             layoutPaths: clientLayoutPaths,
             pagePath: clientPagePath,
             params: match.params,
+            errorPath: clientErrorPath,
+            loadingPath: clientLoadingPath,
           },
           clientEntry: '/@lastjs/client',
           metadata,

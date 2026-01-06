@@ -20,6 +20,10 @@ export interface HydrationData {
   layoutPaths: string[];
   pagePath: string;
   params?: Record<string, string>;
+  /** Error 组件路径 */
+  errorPath?: string;
+  /** Loading 组件路径 */
+  loadingPath?: string;
 }
 
 /**
@@ -33,19 +37,37 @@ export function renderComponent(
   return ReactDOMServer.renderToString(element);
 }
 
+export interface RenderWithLayoutsOptions {
+  /** Loading 组件 */
+  Loading?: React.ComponentType;
+  /** Error 组件（用于客户端 Error Boundary） */
+  ErrorComponent?: React.ComponentType<{ error: Error; reset: () => void }>;
+  /** Error Boundary 组件 */
+  ErrorBoundary?: React.ComponentType<{
+    children: React.ReactNode;
+    fallback: React.ComponentType<{ error: Error; reset: () => void }>;
+  }>;
+}
+
 /**
  * 渲染带有 Layout 嵌套的页面
  * @param layouts - Layout 组件数组（从根到叶）
  * @param Page - 页面组件
  * @param props - 传递给页面的 props
- * @param Loading - 可选的 Loading 组件
+ * @param options - 可选配置（Loading, Error 组件等）
  */
 export function renderWithLayouts(
   layouts: React.ComponentType<{ children: React.ReactNode }>[],
   Page: React.ComponentType<Record<string, unknown>>,
   props: Record<string, unknown>,
-  Loading?: React.ComponentType
+  options?: RenderWithLayoutsOptions | React.ComponentType
 ): string {
+  // 兼容旧的 API（第四个参数直接传 Loading 组件）
+  const opts: RenderWithLayoutsOptions =
+    typeof options === 'function' ? { Loading: options } : options || {};
+
+  const { Loading, ErrorComponent, ErrorBoundary } = opts;
+
   // 从页面开始构建组件树
   let element: React.ReactElement = React.createElement(Page, props);
 
@@ -54,6 +76,15 @@ export function renderWithLayouts(
     element = React.createElement(
       React.Suspense,
       { fallback: React.createElement(Loading) },
+      element
+    );
+  }
+
+  // 如果有 Error 组件和 ErrorBoundary，用 ErrorBoundary 包裹
+  if (ErrorComponent && ErrorBoundary) {
+    element = React.createElement(
+      ErrorBoundary,
+      { fallback: ErrorComponent },
       element
     );
   }
