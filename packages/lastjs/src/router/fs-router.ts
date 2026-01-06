@@ -96,6 +96,20 @@ export class FileSystemRouter {
   }
 
   /**
+   * 获取 not-found 组件路径（从根节点获取）
+   */
+  getNotFoundPath(): string | undefined {
+    return this.root.files.notFound;
+  }
+
+  /**
+   * 获取根 layout 路径
+   */
+  getRootLayoutPath(): string | undefined {
+    return this.root.files.layout;
+  }
+
+  /**
    * 获取所有路由
    */
   getRoutes(): Array<{ path: string; filePath: string }> {

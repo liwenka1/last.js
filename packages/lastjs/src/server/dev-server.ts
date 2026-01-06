@@ -21,6 +21,7 @@ import {
   generateErrorHTML,
   getViteHMRScripts,
 } from '../render/index.js';
+import { isNotFoundError } from '../navigation/index.js';
 
 export interface DevServerOptions {
   /** app 目录路径 */
@@ -126,7 +127,52 @@ export async function startDevServer(
         const match = router.match(url.pathname);
 
         if (!match) {
+          // 尝试使用自定义 not-found 组件
+          const notFoundPath = router.getNotFoundPath();
+          const rootLayoutPath = router.getRootLayoutPath();
+
+          if (notFoundPath) {
+            try {
+              // 加载 not-found 组件
+              const notFoundMod = await vite.ssrLoadModule(notFoundPath);
+              const NotFound = notFoundMod.default;
+
+              // 加载根 layout（如果存在）
+              const layouts: LayoutComponent[] = [];
+              if (rootLayoutPath) {
+                const layoutMod = await vite.ssrLoadModule(rootLayoutPath);
+                layouts.push(layoutMod.default || layoutMod);
+              }
+
+              // 渲染 not-found 页面
+              const content = renderWithLayouts(layouts, NotFound, {});
+
+              // 获取 metadata
+              const metadata: Metadata = notFoundMod.metadata || {
+                title: '404 - Page Not Found',
+              };
+
+              const html = wrapWithDoctype(content, {
+                viteScripts: getViteHMRScripts(),
+                metadata,
+              });
+
+              setResponseHeader(
+                event,
+                'Content-Type',
+                'text/html; charset=utf-8'
+              );
+              // 设置 404 状态码
+              event.node.res.statusCode = 404;
+              return html;
+            } catch (error) {
+              console.error('Failed to render not-found page:', error);
+            }
+          }
+
+          // 回退到默认 404 页面
           setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');
+          event.node.res.statusCode = 404;
           return generate404HTML(url.pathname);
         }
 
@@ -209,6 +255,50 @@ export async function startDevServer(
         setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');
         return html;
       } catch (error) {
+        // 检查是否为 notFound() 抛出的错误
+        if (isNotFoundError(error)) {
+          const notFoundPath = router.getNotFoundPath();
+          const rootLayoutPath = router.getRootLayoutPath();
+
+          if (notFoundPath) {
+            try {
+              const notFoundMod = await vite.ssrLoadModule(notFoundPath);
+              const NotFound = notFoundMod.default;
+
+              const layouts: LayoutComponent[] = [];
+              if (rootLayoutPath) {
+                const layoutMod = await vite.ssrLoadModule(rootLayoutPath);
+                layouts.push(layoutMod.default || layoutMod);
+              }
+
+              const content = renderWithLayouts(layouts, NotFound, {});
+              const metadata: Metadata = notFoundMod.metadata || {
+                title: '404 - Page Not Found',
+              };
+
+              const html = wrapWithDoctype(content, {
+                viteScripts: getViteHMRScripts(),
+                metadata,
+              });
+
+              setResponseHeader(
+                event,
+                'Content-Type',
+                'text/html; charset=utf-8'
+              );
+              event.node.res.statusCode = 404;
+              return html;
+            } catch (notFoundError) {
+              console.error('Failed to render not-found page:', notFoundError);
+            }
+          }
+
+          // 回退到默认 404
+          setResponseHeader(event, 'Content-Type', 'text/html; charset=utf-8');
+          event.node.res.statusCode = 404;
+          return generate404HTML(url.pathname);
+        }
+
         console.error('Request handler error:', error);
 
         // 使用 Vite 的错误堆栈修复

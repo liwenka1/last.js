@@ -29,3 +29,10 @@ export type { DevServerOptions, DevServerResult } from './server/index.js';
 // Vite
 export { lastVitePlugin } from './vite/index.js';
 export type { LastVitePluginOptions } from './vite/index.js';
+
+// Navigation
+export {
+  notFound,
+  NotFoundError,
+  isNotFoundError,
+} from './navigation/index.js';

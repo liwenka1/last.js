@@ -32,6 +32,10 @@
     "./vite": {
       "types": "./dist/vite/index.d.ts",
       "default": "./dist/vite/index.js"
+    },
+    "./navigation": {
+      "types": "./dist/navigation/index.d.ts",
+      "default": "./dist/navigation/index.js"
     }
   },
   "files": [
