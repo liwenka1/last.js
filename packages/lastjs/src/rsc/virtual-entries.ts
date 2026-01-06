@@ -197,6 +197,7 @@ function pathToRegex(path: string): string {
 
 /**
  * 生成 RSC 入口代码
+ * 使用静态导入以支持生产构建
  */
 function generateRscEntryCode(
   routes: RouteInfo[],
@@ -205,9 +206,37 @@ function generateRscEntryCode(
   rootErrorPath?: string,
   rootLoadingPath?: string
 ): string {
+  // 收集所有需要导入的模块
+  const allModules = new Set<string>();
+
+  // 添加所有页面、布局、loading、error
+  for (const route of routes) {
+    allModules.add(route.pagePath);
+    route.layoutPaths.forEach((p) => allModules.add(p));
+    if (route.loadingPath) allModules.add(route.loadingPath);
+    if (route.errorPath) allModules.add(route.errorPath);
+  }
+
+  // 添加特殊页面
+  if (notFoundPath) allModules.add(notFoundPath);
+  if (rootLayoutPath) allModules.add(rootLayoutPath);
+  if (rootErrorPath) allModules.add(rootErrorPath);
+  if (rootLoadingPath) allModules.add(rootLoadingPath);
+
+  // 生成静态导入语句和模块映射
+  const moduleImports: string[] = [];
+  const moduleMap: string[] = [];
+  let moduleIndex = 0;
+
+  for (const modulePath of allModules) {
+    const varName = `mod_${moduleIndex++}`;
+    moduleImports.push(`import * as ${varName} from '${modulePath}';`);
+    moduleMap.push(`  '${modulePath}': ${varName}`);
+  }
+
   // 生成路由匹配代码
   const routeMatchers = routes
-    .map((route, index) => {
+    .map((route) => {
       const regex = pathToRegex(route.path);
       return `  { 
     regex: new RegExp('${regex}'),
@@ -224,6 +253,19 @@ function generateRscEntryCode(
   return `
 import { renderToReadableStream } from '@vitejs/plugin-rsc/rsc';
 import React, { Suspense } from 'react';
+
+// 静态导入所有模块
+${moduleImports.join('\n')}
+
+// 模块映射表
+const modules = {
+${moduleMap.join(',\n')}
+};
+
+// 获取模块
+function getModule(path) {
+  return modules[path];
+}
 
 // 路由表
 const routes = [
@@ -287,18 +329,22 @@ export default async function handler(request) {
     loadingPath = route.loadingPath;
     errorPath = route.errorPath;
     
-    try {
-      const mod = await import(/* @vite-ignore */ route.pagePath);
+    const mod = getModule(route.pagePath);
+    if (mod && mod.default) {
       PageComponent = mod.default;
       
       // 获取 metadata
       if (mod.metadata) {
         metadata = mod.metadata;
       } else if (mod.generateMetadata) {
-        metadata = await mod.generateMetadata({ params });
+        try {
+          metadata = await mod.generateMetadata({ params });
+        } catch (e) {
+          console.error('Failed to generate metadata:', e);
+        }
       }
-    } catch (e) {
-      console.error('Failed to load page:', e);
+    } else {
+      console.error('Page module not found:', route.pagePath);
       isNotFound = true;
     }
   } else {
@@ -308,14 +354,13 @@ export default async function handler(request) {
   // 处理 404
   if (isNotFound) {
     if (notFoundPath) {
-      try {
-        const mod = await import(/* @vite-ignore */ notFoundPath);
+      const mod = getModule(notFoundPath);
+      if (mod && mod.default) {
         PageComponent = mod.default;
         if (mod.metadata) {
           metadata = mod.metadata;
         }
-      } catch (e) {
-        console.error('Failed to load not-found:', e);
+      } else {
         PageComponent = () => React.createElement('h1', null, '404 - Page Not Found');
       }
     } else {
@@ -330,27 +375,25 @@ export default async function handler(request) {
   // 加载所有布局
   const layouts = [];
   for (const layoutPath of layoutPaths) {
-    try {
-      const mod = await import(/* @vite-ignore */ layoutPath);
+    const mod = getModule(layoutPath);
+    if (mod && mod.default) {
       layouts.push(mod.default);
       
       // 合并布局的 metadata（页面的 metadata 优先级更高）
       if (mod.metadata && Object.keys(metadata).length === 0) {
         metadata = { ...mod.metadata, ...metadata };
       }
-    } catch (e) {
-      console.error('Failed to load layout:', layoutPath, e);
+    } else {
+      console.error('Layout module not found:', layoutPath);
     }
   }
   
   // 加载 loading 组件
   let LoadingComponent = null;
   if (loadingPath) {
-    try {
-      const mod = await import(/* @vite-ignore */ loadingPath);
+    const mod = getModule(loadingPath);
+    if (mod && mod.default) {
       LoadingComponent = mod.default;
-    } catch (e) {
-      // 忽略
     }
   }
   
