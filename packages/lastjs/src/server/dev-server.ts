@@ -30,6 +30,7 @@ import {
 import { isNotFoundError } from '../navigation/index.js';
 import { ApiRouter } from './api-router.js';
 import { handleServerAction, type ActionRequest } from './actions-handler.js';
+import { actionsRegistry } from './actions-registry.js';
 
 export interface DevServerOptions {
   /** app 目录路径 */
@@ -69,70 +70,9 @@ function toClientPath(absolutePath: string, rootDir: string): string {
   return '/' + relativePath;
 }
 
-/**
- * 检查组件是否是 async 函数
- * async 组件只能在服务端执行，客户端导航时需要完整页面加载
- */
-function isAsyncComponent(component: unknown): boolean {
-  if (!component || typeof component !== 'function') {
-    return false;
-  }
-
-  // 检查是否是 AsyncFunction
-  const fn = component as { constructor?: { name?: string } };
-  if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
-    return true;
-  }
-
-  // 检查函数字符串
-  const fnStr = component.toString();
-  if (fnStr.startsWith('async ') || fnStr.includes('async function')) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * 检查模块是否包含 async 组件
- * 递归检查模块中的所有导出，查找 async 函数组件
- *
- * 注意：只检测可能是 React 组件的导出（首字母大写的函数）
- * 这样可以避免将 Server Actions 误判为 async 组件
- */
-function moduleContainsAsyncComponents(mod: unknown): boolean {
-  if (!mod || typeof mod !== 'object') {
-    return false;
-  }
-
-  // 检查所有导出的值
-  for (const key in mod) {
-    const value = (mod as Record<string, unknown>)[key];
-
-    // 跳过 metadata 和其他非组件导出
-    if (
-      key === 'metadata' ||
-      key === 'generateMetadata' ||
-      key === 'serverOnly' ||
-      key === '__esModule' ||
-      key === 'default' // default 单独检测
-    ) {
-      continue;
-    }
-
-    // 只检查首字母大写的函数（React 组件命名约定）
-    // 这样可以避免将 camelCase 的 Server Actions 误判
-    if (
-      typeof value === 'function' &&
-      key[0] === key[0].toUpperCase() &&
-      isAsyncComponent(value)
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
+// 移除：不再需要检测 async 组件
+// React 19 的 Suspense 和 Streaming 已经能很好地处理 async 组件
+// 让 React 自己决定如何渲染，而不是预先判断
 
 /**
  * 启动开发服务器
@@ -149,6 +89,9 @@ export async function startDevServer(
   // 创建 API 路由器并扫描
   const apiRouter = new ApiRouter(appDir);
   await apiRouter.scan();
+
+  // 扫描并注册 Server Actions
+  await actionsRegistry.scanAndRegister(appDir, vite);
 
   // 打印发现的 API 路由
   const apiRoutes = apiRouter.getRoutes();
@@ -214,11 +157,8 @@ export async function startDevServer(
         const body = await readBody(event);
         const actionRequest = body as ActionRequest;
 
-        // 处理 Server Action
-        const result = await handleServerAction(actionRequest, {
-          appDir,
-          vite,
-        });
+        // 处理 Server Action（使用白名单机制）
+        const result = await handleServerAction(actionRequest, vite);
 
         // 返回结果
         setResponseHeader(
@@ -490,32 +430,9 @@ export async function startDevServer(
         const isClientNavigation =
           getRequestHeader(event, 'x-lastjs-navigation') === 'true';
 
-        // 检查页面是否需要完整页面加载
-        // 自动检测：
-        // 1. 页面组件本身是 async 函数
-        // 2. 页面模块中包含任何 async 组件（可能是子组件）
-        // 3. 页面显式导出 serverOnly = true（用于服务端专属代码，如 process）
-        const PageComponent = pageMod.default;
-        const hasAsyncComponent = isAsyncComponent(PageComponent);
-        const hasAsyncSubComponents = moduleContainsAsyncComponents(pageMod);
-        const explicitServerOnly = pageMod.serverOnly === true;
-        const requireFullPageLoad =
-          hasAsyncComponent || hasAsyncSubComponents || explicitServerOnly;
-
-        // 调试日志
-        if (requireFullPageLoad) {
-          console.log(
-            `[Last.js] Server-only page detected: ${match.filePath}`,
-            {
-              hasAsyncComponent,
-              hasAsyncSubComponents,
-              explicitServerOnly,
-            }
-          );
-        }
-
         if (isClientNavigation) {
           // 客户端导航：返回 JSON 数据（包含 metadata）
+          // 简化：所有页面都支持客户端导航，让 React 处理组件差异
           setResponseHeader(
             event,
             'Content-Type',
@@ -529,7 +446,6 @@ export async function startDevServer(
             metadata,
             errorPath: clientErrorPath,
             loadingPath: clientLoadingPath,
-            requireFullPageLoad,
           });
         }
 
@@ -583,18 +499,8 @@ export async function startDevServer(
         // 生成 HTML 头部（只包含 DOCTYPE 和注入脚本的占位）
         const htmlHead = `<!DOCTYPE html>`;
 
-        // 对于 serverOnly 页面，仍然需要 hydration 来支持 Client Component
-        // 但需要标记这是 serverOnly 页面，让客户端知道如何处理
-        const isServerOnlyPage = requireFullPageLoad;
-
-        // 在 hydration 数据中添加 serverOnly 标记
-        const hydrationDataWithFlag = {
-          ...hydrationData,
-          serverOnly: isServerOnlyPage,
-        };
-
         // 生成 HTML 尾部（hydration 脚本）
-        const hydrationScript = generateHydrationScript(hydrationDataWithFlag);
+        const hydrationScript = generateHydrationScript(hydrationData);
 
         // 所有页面都使用完整的客户端脚本
         const clientScript = `<script type="module" src="/@lastjs/client"></script>`;

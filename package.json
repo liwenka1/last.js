@@ -17,6 +17,7 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@swc/core": "^1.15.8",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",

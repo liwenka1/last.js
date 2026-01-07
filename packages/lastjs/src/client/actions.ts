@@ -5,18 +5,47 @@
  */
 
 /**
- * 序列化参数（处理 FormData 等特殊类型）
+ * 序列化参数（处理 FormData、Date 等特殊类型）
  */
 function serializeArgs(args: unknown[]): unknown[] {
   return args.map((arg) => {
+    // 处理 FormData
     if (arg instanceof FormData) {
-      // 将 FormData 转换为普通对象
       const obj: Record<string, unknown> = {};
       arg.forEach((value, key) => {
         obj[key] = value;
       });
       return { __type: 'FormData', data: obj };
     }
+
+    // 处理 Date
+    if (arg instanceof Date) {
+      return { __type: 'Date', value: arg.toISOString() };
+    }
+
+    // 处理 undefined（JSON 不支持 undefined）
+    if (arg === undefined) {
+      return { __undefined: true };
+    }
+
+    // 处理 File（浏览器环境）
+    if (
+      typeof window !== 'undefined' &&
+      arg &&
+      typeof arg === 'object' &&
+      'name' in arg &&
+      'size' in arg &&
+      'type' in arg
+    ) {
+      console.warn('[Server Actions] File upload not yet supported');
+      return {
+        __type: 'File',
+        name: (arg as { name: string }).name,
+        size: (arg as { size: number }).size,
+        type: (arg as { type: string }).type,
+      };
+    }
+
     return arg;
   });
 }
@@ -70,14 +99,17 @@ export function createServerAction<Args extends unknown[], Result>(
 }
 
 /**
- * 定义 Server Action（用于在 actions 文件中使用）
+ * 定义 Server Action
+ *
+ * @param actionId - Action ID (格式: "文件路径:函数名")
+ * @param implementation - 服务端实现
  *
  * @example
  * ```ts
  * // app/actions.ts
  * 'use server'
  *
- * import { defineServerAction } from 'lastjs/client/actions';
+ * import { defineServerAction } from 'lastjs/client';
  *
  * export const createTodo = defineServerAction(
  *   'app/actions.ts:createTodo',
@@ -87,6 +119,14 @@ export function createServerAction<Args extends unknown[], Result>(
  *     return { success: true, id: 1 };
  *   }
  * );
+ * ```
+ *
+ * @deprecated 推荐直接导出 async 函数，框架会自动处理：
+ * ```ts
+ * 'use server'
+ * export async function createTodo(formData: FormData) {
+ *   // ... 只要文件有 'use server'，这个函数就会自动注册
+ * }
  * ```
  */
 export function defineServerAction<Args extends unknown[], Result>(

@@ -1,9 +1,13 @@
 import type { Plugin, UserConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
+import { serverActionsPlugin } from './plugin-server-actions.js';
+import { resolve } from 'pathe';
 
 export interface LastVitePluginOptions {
   /** app 目录路径 */
   appDir?: string;
+  /** 根目录路径 */
+  rootDir?: string;
 }
 
 // 客户端入口虚拟模块 ID
@@ -277,31 +281,25 @@ function isAsyncFunction(fn) {
 async function loadPage(href) {
   try {
     // 获取新页面的数据
-    const response = await fetch(href, {
-      headers: {
-        'X-LastJS-Navigation': 'true',
-      },
-    });
+        const response = await fetch(href, {
+          headers: {
+            'X-LastJS-Navigation': 'true',
+          },
+        });
 
-    if (!response.ok) {
-      // 如果服务器返回错误，回退到完整页面加载
-      window.location.href = href;
-      return;
-    }
+        if (!response.ok) {
+          // 如果服务器返回错误，回退到完整页面加载
+          window.location.href = href;
+          return;
+        }
 
-    const contentType = response.headers.get('content-type');
+        const contentType = response.headers.get('content-type');
 
-    // 如果返回 JSON，说明是导航数据
-    if (contentType && contentType.includes('application/json')) {
-      const data = await response.json();
+        // 如果返回 JSON，说明是导航数据
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
 
-      // 如果服务端标记需要完整页面加载（包含 async 组件或服务端专属代码）
-      if (data.requireFullPageLoad) {
-        window.location.href = href;
-        return;
-      }
-
-      const { props, layoutPaths, pagePath, params, metadata, errorPath, loadingPath } = data;
+          const { props, layoutPaths, pagePath, params, metadata, errorPath, loadingPath } = data;
 
       // 加载模块
       const layoutModules = await Promise.all(
@@ -365,9 +363,6 @@ async function loadPage(href) {
   }
 }
 
-// 标记当前页面是否为 serverOnly
-let isServerOnlyPage = false;
-
 // 初始 hydration
 async function hydrate() {
   const data = window.__LASTJS_DATA__;
@@ -376,29 +371,7 @@ async function hydrate() {
     return;
   }
 
-  const { props, layoutPaths, pagePath, params, errorPath, loadingPath, serverOnly } = data;
-
-  // 记录是否为 serverOnly 页面
-  isServerOnlyPage = serverOnly || false;
-
-  // 对于 serverOnly 页面，不进行完整的 React hydration
-  // 因为这些页面包含 async 子组件，在客户端无法执行
-  // 只设置基本的导航功能
-  if (isServerOnlyPage) {
-    console.log('[Last.js] Server-only page detected, skipping React hydration');
-
-    // 更新全局状态
-    window.__LASTJS_STATE__ = {
-      pathname: window.location.pathname,
-      params: params || {},
-      searchParams: new URLSearchParams(window.location.search),
-    };
-
-    // 设置导航拦截（使用事件委托）
-    // 对于 serverOnly 页面，所有导航都使用完整页面加载
-    console.log('[Last.js] Navigation ready (server-only mode) ✓');
-    return;
-  }
+  const { props, layoutPaths, pagePath, params, errorPath, loadingPath } = data;
 
   try {
     // 动态导入所有 layout 和 page 组件
@@ -438,10 +411,10 @@ async function hydrate() {
     // Hydrate - 由于 layout 渲染了完整的 HTML 结构，我们 hydrate 到 document
     root = hydrateRoot(document, element, {
       onRecoverableError(error) {
-        // 忽略 async 组件相关的错误
+        // 忽略预期的 hydration 不匹配
         const errorMessage = error?.message || '';
-        if (errorMessage.includes('async') && errorMessage.includes('Client Component')) {
-          // 静默忽略 - async 组件已在服务端渲染，客户端不需要重新渲染
+        if (errorMessage.includes('Hydration') || errorMessage.includes('hydration')) {
+          // 这些通常是服务端和客户端渲染差异，React 会自动修复
           return;
         }
         console.error('[Last.js] Recoverable error:', error);
@@ -462,22 +435,16 @@ window.addEventListener('popstate', () => {
   });
 });
 
-// 全局错误处理器 - 捕获 async 组件错误
+// 全局错误处理器
 window.addEventListener('error', (event) => {
   if (handlingAsyncError) return; // 防止无限循环
 
   const errorMessage = event.error?.message || event.message || '';
-  if (errorMessage.includes('async') && errorMessage.includes('Client Component')) {
-    // 对于 serverOnly 页面，静默忽略 async 组件错误
-    // 因为这些组件已在服务端渲染，客户端只需要保留服务端的 HTML
-    if (isServerOnlyPage) {
-      event.preventDefault();
-      return;
-    }
-
-    // 对于非 serverOnly 页面，回退到完整页面加载
+  
+  // 对于严重的渲染错误，回退到完整页面加载
+  if (errorMessage.includes('Cannot read') || errorMessage.includes('undefined')) {
     handlingAsyncError = true;
-    console.log('[Last.js] Async component error detected, forcing full page load...');
+    console.error('[Last.js] Critical error detected:', errorMessage);
     event.preventDefault();
     window.location.assign(window.location.href);
   }
@@ -496,12 +463,20 @@ if (document.readyState === 'loading') {
  * 配置 React 支持和 SSR
  */
 export function lastVitePlugin(_options: LastVitePluginOptions = {}): Plugin[] {
-  // 获取 React 插件
+  const { appDir = 'app', rootDir = process.cwd() } = _options;
+  const resolvedAppDir = resolve(rootDir, appDir);
+
+  // 获取 React 插件（使用 SWC）
   const reactPlugin = react();
   const plugins = Array.isArray(reactPlugin) ? reactPlugin : [reactPlugin];
 
   return [
+    // SWC 处理 React 编译（快）
     ...plugins,
+
+    // Babel 处理 Server Actions 转换（灵活）
+    serverActionsPlugin({ appDir: resolvedAppDir }),
+
     {
       name: 'lastjs:config',
       config(): UserConfig {
