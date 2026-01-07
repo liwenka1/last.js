@@ -15,6 +15,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ViteDevServer } from 'vite';
 import type { ReactNode, ComponentType } from 'react';
 import { relative } from 'pathe';
+import { readFile } from 'node:fs/promises';
 import { FileSystemRouter } from '../router/fs-router.js';
 import type { Metadata, RouteModule } from '../router/types.js';
 import {
@@ -68,6 +69,20 @@ function toClientPath(absolutePath: string, rootDir: string): string {
   const relativePath = relative(rootDir, absolutePath);
   // 确保路径以 / 开头
   return '/' + relativePath;
+}
+
+/**
+ * 检测页面是否需要使用 RSC 环境（包含 async 组件或 Suspense）
+ */
+async function pageRequiresRSC(filePath: string): Promise<boolean> {
+  try {
+    const source = await readFile(filePath, 'utf-8');
+    // 检查是否包含 Suspense 或 async function
+    return source.includes('Suspense') || /async\s+function/.test(source);
+  } catch {
+    // 读取失败，保守起见返回 false
+    return false;
+  }
 }
 
 // 移除：不再需要检测 async 组件
@@ -400,7 +415,10 @@ export async function startDevServer(
           params: match.params,
         };
 
-        // 加载页面模块（需要在判断客户端导航之前，因为需要获取 metadata）
+        // 检测页面是否需要 RSC（包含 async 组件）
+        const requiresRSC = await pageRequiresRSC(match.filePath);
+
+        // 加载页面模块
         const pageMod: RouteModule = await vite.ssrLoadModule(match.filePath);
 
         // 获取 metadata
@@ -431,22 +449,40 @@ export async function startDevServer(
           getRequestHeader(event, 'x-lastjs-navigation') === 'true';
 
         if (isClientNavigation) {
-          // 客户端导航：返回 JSON 数据（包含 metadata）
-          // 简化：所有页面都支持客户端导航，让 React 处理组件差异
-          setResponseHeader(
-            event,
-            'Content-Type',
-            'application/json; charset=utf-8'
-          );
-          return JSON.stringify({
-            props: pageProps,
-            layoutPaths: clientLayoutPaths,
-            pagePath: clientPagePath,
-            params: match.params,
-            metadata,
-            errorPath: clientErrorPath,
-            loadingPath: clientLoadingPath,
-          });
+          // 检查页面是否包含 Suspense 或 async 组件
+          // 读取页面源文件检测是否使用了流式渲染特性
+          let requiresStreaming = false;
+          try {
+            const pageSource = await readFile(match.filePath, 'utf-8');
+            // 检查是否包含 Suspense（用于异步流式渲染）或 async function
+            requiresStreaming =
+              pageSource.includes('Suspense') ||
+              /async\s+function/.test(pageSource);
+          } catch (e) {
+            // 读取失败，保守起见回退到完整加载
+            requiresStreaming = true;
+          }
+
+          // 对于需要流式渲染的页面，回退到完整页面加载
+          if (requiresStreaming) {
+            // 不返回 JSON，继续执行下面的 SSR 流程
+          } else {
+            // 普通页面：返回 JSON 数据进行客户端导航
+            setResponseHeader(
+              event,
+              'Content-Type',
+              'application/json; charset=utf-8'
+            );
+            return JSON.stringify({
+              props: pageProps,
+              layoutPaths: clientLayoutPaths,
+              pagePath: clientPagePath,
+              params: match.params,
+              metadata,
+              errorPath: clientErrorPath,
+              loadingPath: clientLoadingPath,
+            });
+          }
         }
 
         // 加载所有 layout 组件
@@ -490,6 +526,7 @@ export async function startDevServer(
           params: match.params,
           errorPath: clientErrorPath,
           loadingPath: clientLoadingPath,
+          skipHydration: requiresRSC, // RSC 页面跳过 hydration
         };
 
         // 生成注入到 head 的脚本

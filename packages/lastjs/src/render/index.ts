@@ -12,6 +12,8 @@ export interface RenderOptions {
   hydrationData?: HydrationData;
   /** 客户端入口脚本路径 */
   clientEntry?: string;
+  /** 客户端脚本路径数组（用于生产环境） */
+  clientScripts?: string[];
   /** 页面 Metadata */
   metadata?: Metadata;
 }
@@ -221,6 +223,7 @@ export function generateHTML(
     viteScripts = '',
     hydrationData,
     clientEntry,
+    clientScripts,
     metadata,
   } = options;
 
@@ -229,6 +232,11 @@ export function generateHTML(
     : '';
   const clientScript = clientEntry
     ? `<script type="module" src="${clientEntry}"></script>`
+    : '';
+  const clientScriptTags = clientScripts
+    ? clientScripts
+        .map((src) => `<script type="module" src="${src}"></script>`)
+        .join('\n    ')
     : '';
 
   // 如果有 metadata，使用 metadata 中的 title，否则使用默认 title
@@ -245,6 +253,10 @@ export function generateHTML(
   const metadataTags = metadataWithoutTitle
     ? renderMetadataToHTML(metadataWithoutTitle)
     : '';
+
+  const scriptInjection = [hydrationScript, clientScript, clientScriptTags]
+    .filter(Boolean)
+    .join('\n    ');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -265,8 +277,7 @@ export function generateHTML(
   </head>
   <body>
     <div id="__lastjs">${content}</div>
-    ${hydrationScript}
-    ${clientScript}
+    ${scriptInjection}
   </body>
 </html>`;
 }
@@ -279,13 +290,24 @@ export function wrapWithDoctype(
   content: string,
   options: RenderOptions = {}
 ): string {
-  const { viteScripts = '', hydrationData, clientEntry, metadata } = options;
+  const {
+    viteScripts = '',
+    hydrationData,
+    clientEntry,
+    clientScripts,
+    metadata,
+  } = options;
 
   const hydrationScript = hydrationData
     ? generateHydrationScript(hydrationData)
     : '';
   const clientScript = clientEntry
     ? `<script type="module" src="${clientEntry}"></script>`
+    : '';
+  const clientScriptTags = clientScripts
+    ? clientScripts
+        .map((src) => `<script type="module" src="${src}"></script>`)
+        .join('\n    ')
     : '';
 
   // 如果内容已经是完整的 HTML 文档
@@ -311,9 +333,12 @@ export function wrapWithDoctype(
 
     // 用 <div id="__lastjs"> 包裹 body 内容，并注入 hydration 脚本
     // 找到 <body> 和 </body> 之间的内容
+    const scriptInjection = [hydrationScript, clientScript, clientScriptTags]
+      .filter(Boolean)
+      .join('\n    ');
     result = result.replace(
       /(<body[^>]*>)([\s\S]*?)(<\/body>)/,
-      `$1<div id="__lastjs">$2</div>${hydrationScript}${clientScript}$3`
+      `$1<div id="__lastjs">$2</div>${scriptInjection ? '\n    ' + scriptInjection : ''}$3`
     );
 
     return `<!DOCTYPE html>${result}`;
@@ -532,23 +557,147 @@ export function renderMetadataToHTML(metadata: Metadata): string {
     }
   }
 
+  // Author
+  if (metadata.author) {
+    tags.push(
+      `<meta name="author" content="${escapeHTML(metadata.author)}" />`
+    );
+  }
+
+  // Viewport
+  if (metadata.viewport) {
+    tags.push(
+      `<meta name="viewport" content="${escapeHTML(metadata.viewport)}" />`
+    );
+  }
+
+  // Theme Color
+  if (metadata.themeColor) {
+    tags.push(
+      `<meta name="theme-color" content="${escapeHTML(metadata.themeColor)}" />`
+    );
+  }
+
+  // Canonical URL
+  if (metadata.canonical) {
+    tags.push(
+      `<link rel="canonical" href="${escapeHTML(metadata.canonical)}" />`
+    );
+  }
+
+  // PWA Manifest
+  if (metadata.manifest) {
+    tags.push(
+      `<link rel="manifest" href="${escapeHTML(metadata.manifest)}" />`
+    );
+  }
+
   // Icons
   if (metadata.icons) {
+    // Icon (single or multiple)
     if (metadata.icons.icon) {
-      tags.push(
-        `<link rel="icon" href="${escapeHTML(metadata.icons.icon)}" />`
-      );
+      const icons = Array.isArray(metadata.icons.icon)
+        ? metadata.icons.icon
+        : [metadata.icons.icon];
+      for (const icon of icons) {
+        tags.push(`<link rel="icon" href="${escapeHTML(icon)}" />`);
+      }
     }
+
+    // Shortcut Icon
     if (metadata.icons.shortcut) {
       tags.push(
         `<link rel="shortcut icon" href="${escapeHTML(metadata.icons.shortcut)}" />`
       );
     }
+
+    // Apple Touch Icon (single or multiple)
     if (metadata.icons.apple) {
+      const appleIcons = Array.isArray(metadata.icons.apple)
+        ? metadata.icons.apple
+        : [metadata.icons.apple];
+      for (const icon of appleIcons) {
+        tags.push(`<link rel="apple-touch-icon" href="${escapeHTML(icon)}" />`);
+      }
+    }
+
+    // Other Icons
+    if (metadata.icons.other) {
+      for (const icon of metadata.icons.other) {
+        let iconTag = `<link rel="${escapeHTML(icon.rel)}" href="${escapeHTML(icon.url)}"`;
+        if (icon.sizes) {
+          iconTag += ` sizes="${escapeHTML(icon.sizes)}"`;
+        }
+        if (icon.type) {
+          iconTag += ` type="${escapeHTML(icon.type)}"`;
+        }
+        iconTag += ' />';
+        tags.push(iconTag);
+      }
+    }
+  }
+
+  // Alternates
+  if (metadata.alternates) {
+    // Canonical (via alternates)
+    if (metadata.alternates.canonical) {
       tags.push(
-        `<link rel="apple-touch-icon" href="${escapeHTML(metadata.icons.apple)}" />`
+        `<link rel="canonical" href="${escapeHTML(metadata.alternates.canonical)}" />`
       );
     }
+
+    // Language alternates
+    if (metadata.alternates.languages) {
+      for (const [lang, url] of Object.entries(metadata.alternates.languages)) {
+        tags.push(
+          `<link rel="alternate" hreflang="${escapeHTML(lang)}" href="${escapeHTML(url)}" />`
+        );
+      }
+    }
+
+    // Media alternates
+    if (metadata.alternates.media) {
+      for (const [media, url] of Object.entries(metadata.alternates.media)) {
+        tags.push(
+          `<link rel="alternate" media="${escapeHTML(media)}" href="${escapeHTML(url)}" />`
+        );
+      }
+    }
+  }
+
+  // Verification
+  if (metadata.verification) {
+    if (metadata.verification.google) {
+      tags.push(
+        `<meta name="google-site-verification" content="${escapeHTML(metadata.verification.google)}" />`
+      );
+    }
+    if (metadata.verification.bing) {
+      tags.push(
+        `<meta name="msvalidate.01" content="${escapeHTML(metadata.verification.bing)}" />`
+      );
+    }
+    if (metadata.verification.yandex) {
+      tags.push(
+        `<meta name="yandex-verification" content="${escapeHTML(metadata.verification.yandex)}" />`
+      );
+    }
+    if (metadata.verification.other) {
+      for (const [name, content] of Object.entries(
+        metadata.verification.other
+      )) {
+        tags.push(
+          `<meta name="${escapeHTML(name)}" content="${escapeHTML(content)}" />`
+        );
+      }
+    }
+  }
+
+  // Twitter site
+  if (metadata.twitter?.site) {
+    tags.push(
+      `<meta name="twitter:site" content="${escapeHTML(metadata.twitter.site)}" />`
+    );
   }
 
   return tags.join('\n    ');

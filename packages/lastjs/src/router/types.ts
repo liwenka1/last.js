@@ -89,14 +89,30 @@ export interface RouteModule {
  * Metadata 类型
  */
 export interface Metadata {
+  /** 页面标题 */
   title?:
     | string
     | {
         default: string;
         template?: string;
       };
+  /** 页面描述 */
   description?: string;
+  /** 关键词 */
   keywords?: string | string[];
+  /** 作者 */
+  author?: string;
+  /** 规范 URL */
+  canonical?: string;
+  /** 语言 */
+  lang?: string;
+  /** 视口设置 */
+  viewport?: string;
+  /** 主题颜色 */
+  themeColor?: string;
+  /** PWA Manifest */
+  manifest?: string;
+  /** Open Graph 元数据 */
   openGraph?: {
     title?: string;
     description?: string;
@@ -111,21 +127,44 @@ export interface Metadata {
     locale?: string;
     type?: string;
   };
+  /** Twitter Card 元数据 */
   twitter?: {
     card?: 'summary' | 'summary_large_image' | 'app' | 'player';
     title?: string;
     description?: string;
     images?: string[];
     creator?: string;
+    site?: string;
   };
+  /** 搜索引擎爬虫指令 */
   robots?: {
     index?: boolean;
     follow?: boolean;
     [key: string]: boolean | string | undefined;
   };
+  /** 图标 */
   icons?: {
-    icon?: string;
+    icon?: string | string[];
     shortcut?: string;
-    apple?: string;
+    apple?: string | string[];
+    other?: Array<{
+      rel: string;
+      url: string;
+      sizes?: string;
+      type?: string;
+    }>;
+  };
+  /** 多语言/备用链接 */
+  alternates?: {
+    canonical?: string;
+    languages?: Record<string, string>;
+    media?: Record<string, string>;
+  };
+  /** 网站验证 */
+  verification?: {
+    google?: string;
+    bing?: string;
+    yandex?: string;
+    other?: Record<string, string>;
   };
 }

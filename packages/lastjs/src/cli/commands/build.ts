@@ -1,6 +1,7 @@
-import { join } from 'pathe';
+import { join, dirname } from 'pathe';
 import { mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import pc from 'picocolors';
 import { build as viteBuild } from 'vite';
 import { lastVitePlugin } from '../../vite/plugin.js';
@@ -40,6 +41,73 @@ export async function build(options: BuildCommandOptions): Promise<void> {
 
     // 3. 构建客户端 bundle
     console.log(pc.dim('  Building client bundle...'));
+
+    // 获取 lastjs 包的根目录
+    // 通过找到 package.json 的位置来定位包根目录
+    let packageRoot: string;
+    try {
+      // 从当前模块向上查找 package.json
+      const currentDir = dirname(fileURLToPath(import.meta.url));
+      let searchDir = currentDir;
+      while (searchDir !== dirname(searchDir)) {
+        const pkgPath = join(searchDir, 'package.json');
+        if (existsSync(pkgPath)) {
+          const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
+          if (pkg.name === 'lastjs') {
+            packageRoot = searchDir;
+            break;
+          }
+        }
+        searchDir = dirname(searchDir);
+      }
+
+      if (!packageRoot!) {
+        throw new Error('Could not find lastjs package.json');
+      }
+    } catch (error) {
+      throw new Error(`Failed to locate lastjs package: ${error}`);
+    }
+
+    // 收集所有 app 文件作为客户端入口（用于动态导入）
+    const appFiles: Record<string, string> = {};
+
+    async function collectClientEntries(
+      dir: string,
+      prefix = ''
+    ): Promise<void> {
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+        if (entry.isDirectory()) {
+          await collectClientEntries(fullPath, relativePath);
+        } else if (entry.isFile() && /\.(tsx?|jsx?)$/.test(entry.name)) {
+          // 使用 app_ 前缀的路径作为key，避免 / 导致文件名问题
+          // app/blog/[slug]/page.tsx -> app_blog__slug__page
+          // 需要匹配 Vite 的行为：_[slug]_ -> __slug__（不是 ___slug___）
+          const key = `app_${relativePath}`
+            .replace(/\//g, '_') // 斜杠转下划线: app_blog_[slug]_page.tsx
+            .replace(/_\[([^\]]+)\]_/g, '__$1__') // _[xxx]_ 转 __xxx__: app_blog__slug__page.tsx
+            .replace(/\[([^\]]+)\]/g, '__$1__') // [xxx] 转 __xxx__（处理边界情况）
+            .replace(/\.(tsx?|jsx?)$/, ''); // 去掉扩展名
+          appFiles[key] = fullPath;
+        }
+      }
+    }
+
+    await collectClientEntries(appDir);
+    console.log(
+      pc.dim(`    Collected ${Object.keys(appFiles).length} client entries`)
+    );
+
+    // 添加主客户端入口（使用虚拟模块）
+    const clientInput: Record<string, string> = {
+      '@lastjs/client': '/@lastjs/client', // 虚拟模块
+      ...appFiles,
+    };
+
     await viteBuild({
       root: rootDir,
       plugins: lastVitePlugin(),
@@ -47,14 +115,14 @@ export async function build(options: BuildCommandOptions): Promise<void> {
         outDir: join(outDir, 'client'),
         emptyOutDir: true,
         rollupOptions: {
-          input: {
-            client: join(rootDir, 'app/layout.tsx'),
-          },
+          input: clientInput, // 使用包含主入口的 input
           output: {
             entryFileNames: 'assets/[name]-[hash].js',
             chunkFileNames: 'assets/[name]-[hash].js',
             assetFileNames: 'assets/[name]-[hash][extname]',
+            manualChunks: undefined, // 禁用手动分块
           },
+          preserveEntrySignatures: 'strict', // 保留每个入口点的完整导出签名
         },
         manifest: true,
       },
@@ -62,6 +130,58 @@ export async function build(options: BuildCommandOptions): Promise<void> {
 
     // 4. 构建 SSR bundle
     console.log(pc.dim('  Building server bundle...'));
+
+    // 收集所有页面、layout 和 API 路由作为入口
+    const serverEntries: Record<string, string> = {};
+
+    // 添加所有页面
+    for (const route of routes) {
+      const relativePath = route.filePath.replace(rootDir + '/', '');
+      const entryName = relativePath
+        .replace(/\//g, '_')
+        .replace(/\.(tsx?|jsx?)$/, '');
+      serverEntries[entryName] = route.filePath;
+    }
+
+    // 添加根 layout
+    const rootLayoutPath = router.getRootLayoutPath();
+    if (rootLayoutPath) {
+      serverEntries['layout'] = rootLayoutPath;
+    }
+
+    // 添加 not-found 页面
+    const notFoundPath = router.getNotFoundPath();
+    if (notFoundPath) {
+      serverEntries['not-found'] = notFoundPath;
+    }
+
+    // 扫描所有 app 目录文件（包括 layouts, errors, loadings）
+    async function collectAppFiles(dir: string): Promise<void> {
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          await collectAppFiles(fullPath);
+        } else if (entry.isFile() && /\.(tsx?|jsx?)$/.test(entry.name)) {
+          const relativePath = fullPath.replace(rootDir + '/', '');
+          const entryName = relativePath
+            .replace(/\//g, '_')
+            .replace(/\.(tsx?|jsx?)$/, '');
+          if (!serverEntries[entryName]) {
+            serverEntries[entryName] = fullPath;
+          }
+        }
+      }
+    }
+
+    await collectAppFiles(appDir);
+
+    console.log(
+      pc.dim(`    Found ${Object.keys(serverEntries).length} server entries`)
+    );
+
     await viteBuild({
       root: rootDir,
       plugins: lastVitePlugin(),
@@ -70,9 +190,7 @@ export async function build(options: BuildCommandOptions): Promise<void> {
         emptyOutDir: true,
         ssr: true,
         rollupOptions: {
-          input: {
-            server: join(rootDir, 'app/layout.tsx'),
-          },
+          input: serverEntries,
           output: {
             entryFileNames: '[name].js',
             chunkFileNames: 'chunks/[name]-[hash].js',
@@ -106,7 +224,7 @@ export async function build(options: BuildCommandOptions): Promise<void> {
     );
 
     // 7. 生成生产服务器入口
-    const serverScript = generateServerScript();
+    const serverScript = generateServerScript(appDir);
     await writeFile(join(outDir, 'server.js'), serverScript);
 
     // 8. 生成 package.json
@@ -138,139 +256,31 @@ export async function build(options: BuildCommandOptions): Promise<void> {
 /**
  * 生成生产服务器脚本
  */
-function generateServerScript(): string {
-  return `
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+function generateServerScript(_appDir: string): string {
+  return `#!/usr/bin/env node
+/**
+ * Last.js Production Server
+ *
+ * This file is auto-generated by the build process.
+ * Do not edit manually.
+ */
+
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { startProductionServer } from 'lastjs/server';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// MIME 类型映射
-const mimeTypes = {
-  js: 'application/javascript',
-  mjs: 'application/javascript',
-  css: 'text/css',
-  html: 'text/html',
-  json: 'application/json',
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  svg: 'image/svg+xml',
-  ico: 'image/x-icon',
-  woff: 'font/woff',
-  woff2: 'font/woff2',
-  ttf: 'font/ttf',
-  eot: 'application/vnd.ms-fontobject',
-};
-
-// 读取路由信息
-const routesData = JSON.parse(
-  await readFile(join(__dirname, 'routes.json'), 'utf-8')
-);
-
-// 读取客户端 manifest
-let clientManifest = {};
-const manifestPath = join(__dirname, 'client/.vite/manifest.json');
-if (existsSync(manifestPath)) {
-  clientManifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
-}
-
-// 获取客户端入口脚本
-function getClientScript() {
-  for (const [key, value] of Object.entries(clientManifest)) {
-    if (value.isEntry) {
-      return '/assets/' + value.file.split('/').pop();
-    }
-  }
-  return null;
-}
-
-const clientScript = getClientScript();
-
-const server = createServer(async (req, res) => {
-  const url = new URL(req.url || '/', \`http://\${req.headers.host}\`);
-
-  // 静态文件处理
-  if (url.pathname.startsWith('/assets/') ||
-      url.pathname.match(/\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)) {
-    const filePath = join(__dirname, 'client', url.pathname);
-
-    if (existsSync(filePath)) {
-      try {
-        const content = await readFile(filePath);
-        const ext = url.pathname.split('.').pop() || '';
-        res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        res.end(content);
-        return;
-      } catch (e) {
-        // 继续到页面处理
-      }
-    }
-  }
-
-  // 页面渲染
-  try {
-    // 动态导入服务端模块
-    const serverModule = await import('./server/server.js');
-    
-    // 简单的 HTML 响应（生产环境需要更完整的实现）
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(\`
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Last.js App</title>
-        </head>
-        <body>
-          <div id="__lastjs">
-            <h1>Last.js Production Server</h1>
-            <p>Production SSR rendering is being set up...</p>
-            <p>Routes: \${routesData.routes.length}</p>
-          </div>
-          \${clientScript ? \`<script type="module" src="\${clientScript}"></script>\` : ''}
-        </body>
-      </html>
-    \`);
-  } catch (error) {
-    console.error('Server error:', error);
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(\`
-      <!DOCTYPE html>
-      <html>
-        <head><title>500 - Server Error</title></head>
-        <body>
-          <h1>500 - Internal Server Error</h1>
-          <p>\${error instanceof Error ? error.message : 'Unknown error'}</p>
-        </body>
-      </html>
-    \`);
-  }
-});
-
-const port = process.env.PORT || 3000;
-server.listen(port, () => {
-  console.log(\`\\n🚀 Last.js production server running on http://localhost:\${port}\\n\`);
-});
-
-// 优雅关闭
-process.on('SIGINT', () => {
-  console.log('\\n⏳ Shutting down...');
-  server.close(() => {
-    console.log('✓ Server closed');
-    process.exit(0);
-  });
-});
-
-process.on('SIGTERM', () => {
-  server.close(() => process.exit(0));
+// 启动生产服务器
+// appDir 应该指向原始的 app 目录，而不是构建输出目录
+// 从 .lastjs 目录来看，app 目录在 ../app
+startProductionServer({
+  buildDir: __dirname,
+  appDir: join(__dirname, '../app'),
+  port: parseInt(process.env.PORT || '3000', 10),
+}).catch((error) => {
+  console.error('Failed to start production server:', error);
+  process.exit(1);
 });
 `;
 }

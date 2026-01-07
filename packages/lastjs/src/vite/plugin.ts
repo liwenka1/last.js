@@ -1,6 +1,7 @@
 import type { Plugin, UserConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { serverActionsPlugin } from './plugin-server-actions.js';
+import { envPlugin } from './plugin-env.js';
 import { resolve } from 'pathe';
 
 export interface LastVitePluginOptions {
@@ -9,6 +10,11 @@ export interface LastVitePluginOptions {
   /** 根目录路径 */
   rootDir?: string;
 }
+
+// 导出环境名称常量
+export const ENVIRONMENT_CLIENT = 'client';
+export const ENVIRONMENT_SSR = 'ssr';
+export const ENVIRONMENT_RSC = 'rsc';
 
 // 客户端入口虚拟模块 ID
 const VIRTUAL_CLIENT_ID = '/@lastjs/client';
@@ -21,13 +27,34 @@ import * as React from 'react';
 // 模块缓存
 const moduleCache = new Map();
 
+// 全局模块映射（从 hydration data 初始化）
+let globalModuleMap = {};
+
+// 获取模块的实际导入路径
+function getModuleImportPath(sourcePath) {
+  // 如果有全局映射，使用映射
+  if (globalModuleMap[sourcePath]) {
+    return globalModuleMap[sourcePath];
+  }
+
+  // 尝试去掉文件扩展名后再查找
+  const pathWithoutExt = sourcePath.replace(/\\.(tsx?|jsx?)$/, '');
+  if (globalModuleMap[pathWithoutExt]) {
+    return globalModuleMap[pathWithoutExt];
+  }
+
+  // 否则直接返回原路径（开发模式）
+  return sourcePath;
+}
+
 // 加载模块（带缓存）
 async function loadModule(path) {
-  if (moduleCache.has(path)) {
-    return moduleCache.get(path);
+  const resolvedPath = getModuleImportPath(path);
+  if (moduleCache.has(resolvedPath)) {
+    return moduleCache.get(resolvedPath);
   }
-  const mod = await import(/* @vite-ignore */ path);
-  moduleCache.set(path, mod);
+  const mod = await import(/* @vite-ignore */ resolvedPath);
+  moduleCache.set(resolvedPath, mod);
   return mod;
 }
 
@@ -228,6 +255,16 @@ window.__LASTJS_ROUTER__ = {
     }
     isNavigating = true;
     window.history.pushState(null, '', href);
+
+    // 立即更新全局状态（让 UI 立即响应，比如导航栏 active 状态）
+    const url = new URL(href, window.location.origin);
+    window.__LASTJS_STATE__ = {
+      pathname: url.pathname,
+      params: window.__LASTJS_STATE__?.params || {},
+      searchParams: new URLSearchParams(url.search),
+    };
+    notifySubscribers();
+
     await loadPage(href);
     isNavigating = false;
   },
@@ -242,6 +279,16 @@ window.__LASTJS_ROUTER__ = {
     }
     isNavigating = true;
     window.history.replaceState(null, '', href);
+
+    // 立即更新全局状态（让 UI 立即响应，比如导航栏 active 状态）
+    const url = new URL(href, window.location.origin);
+    window.__LASTJS_STATE__ = {
+      pathname: url.pathname,
+      params: window.__LASTJS_STATE__?.params || {},
+      searchParams: new URLSearchParams(url.search),
+    };
+    notifySubscribers();
+
     await loadPage(href);
     isNavigating = false;
   },
@@ -295,11 +342,23 @@ async function loadPage(href) {
 
         const contentType = response.headers.get('content-type');
 
+        // 如果返回 HTML，说明页面需要流式渲染（包含 async 组件或 Suspense）
+        // 这种情况下必须做完整页面重载
+        if (contentType && contentType.includes('text/html')) {
+          window.location.href = href;
+          return;
+        }
+
         // 如果返回 JSON，说明是导航数据
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
 
-          const { props, layoutPaths, pagePath, params, metadata, errorPath, loadingPath } = data;
+          const { props, layoutPaths, pagePath, params, metadata, errorPath, loadingPath, moduleMap } = data;
+
+          // 更新全局模块映射
+          if (moduleMap) {
+            Object.assign(globalModuleMap, moduleMap);
+          }
 
       // 加载模块
       const layoutModules = await Promise.all(
@@ -329,19 +388,14 @@ async function loadPage(href) {
         LoadingComponent = loadingMod.default || loadingMod;
       }
 
-      // 更新全局状态
-      const url = new URL(href, window.location.origin);
-      window.__LASTJS_STATE__ = {
-        pathname: url.pathname,
-        params: params || {},
-        searchParams: new URLSearchParams(url.search),
-      };
+      // 更新 params（pathname 和 searchParams 已在路由器方法中更新）
+      if (params) {
+        window.__LASTJS_STATE__.params = params;
+        notifySubscribers();
+      }
 
       // 更新页面 metadata
       updateMetadata(metadata);
-
-      // 先通知订阅者状态已更新（这样 useSyncExternalStore 会在渲染时获取新值）
-      notifySubscribers();
 
       // 重新渲染
       const element = buildComponentTree(layouts, Page, props, {
@@ -371,7 +425,24 @@ async function hydrate() {
     return;
   }
 
-  const { props, layoutPaths, pagePath, params, errorPath, loadingPath } = data;
+  const { props, layoutPaths, pagePath, params, errorPath, loadingPath, moduleMap, skipHydration } = data;
+
+  // 初始化全局模块映射
+  if (moduleMap) {
+    globalModuleMap = moduleMap;
+  }
+
+  // 检查是否跳过 hydration（用于 Server Components 页面）
+  if (skipHydration) {
+    console.log('[Last.js] Skipping hydration for Server Components page');
+    // 更新全局状态（用于导航）
+    window.__LASTJS_STATE__ = {
+      pathname: window.location.pathname,
+      params: params || {},
+      searchParams: new URLSearchParams(window.location.search),
+    };
+    return; // 跳过 hydration，页面以静态 HTML 显示
+  }
 
   try {
     // 动态导入所有 layout 和 page 组件
@@ -440,7 +511,7 @@ window.addEventListener('error', (event) => {
   if (handlingAsyncError) return; // 防止无限循环
 
   const errorMessage = event.error?.message || event.message || '';
-  
+
   // 对于严重的渲染错误，回退到完整页面加载
   if (errorMessage.includes('Cannot read') || errorMessage.includes('undefined')) {
     handlingAsyncError = true;
@@ -471,6 +542,9 @@ export function lastVitePlugin(_options: LastVitePluginOptions = {}): Plugin[] {
   const plugins = Array.isArray(reactPlugin) ? reactPlugin : [reactPlugin];
 
   return [
+    // 环境变量处理（最先执行）
+    envPlugin({ rootDir, prefix: 'LASTJS_PUBLIC_' }),
+
     // SWC 处理 React 编译（快）
     ...plugins,
 
@@ -489,6 +563,32 @@ export function lastVitePlugin(_options: LastVitePluginOptions = {}): Plugin[] {
           },
           optimizeDeps: {
             include: ['react', 'react-dom', 'react-dom/client'],
+          },
+          // 配置多环境（Environment API）
+          environments: {
+            // SSR 环境（用于服务器端渲染普通页面）
+            [ENVIRONMENT_SSR]: {
+              resolve: {
+                conditions: ['node'],
+                noExternal: true,
+              },
+              build: {
+                outDir: resolve(rootDir, '.lastjs/server'),
+                ssr: true,
+              },
+            },
+
+            // RSC 环境（用于 React Server Components - async 组件）
+            [ENVIRONMENT_RSC]: {
+              resolve: {
+                // react-server 条件让 React 使用 Server Components 版本
+                conditions: ['react-server', 'node'],
+                noExternal: true,
+              },
+              build: {
+                outDir: resolve(rootDir, '.lastjs/rsc'),
+              },
+            },
           },
         };
       },
