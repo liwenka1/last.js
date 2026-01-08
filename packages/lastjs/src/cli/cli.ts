@@ -2,7 +2,13 @@
 import { Command } from 'commander';
 import pc from 'picocolors';
 
+/**
+ * @vitejs/plugin-rsc 已经在内部处理了 react-server 条件
+ * 不需要在 CLI 层面手动设置
+ */
+
 export async function runCLI(): Promise<void> {
+  console.log('[CLI] Starting...');
   const program = new Command();
 
   program
@@ -39,7 +45,7 @@ export async function runCLI(): Promise<void> {
   await program.parseAsync();
 }
 
-// 始终运行 CLI
+// 直接运行 CLI
 runCLI().catch((error) => {
   console.error(pc.red('Error:'), error);
   process.exit(1);

@@ -9,6 +9,15 @@ export type { ProductionServerOptions } from './production-server.js';
 export { ApiRouter } from './api-router.js';
 export type { ApiRoute, ApiRouteMatch } from './api-router.js';
 
+// Server Actions 导出
+export {
+  handleServerAction,
+  registerAction,
+  getAction,
+  clearActions,
+} from './actions-handler.js';
+export type { ActionRequest, ActionResponse } from './actions-handler.js';
+
 // 重新导出 h3 的工具函数，用于 API 路由
 export {
   getQuery,

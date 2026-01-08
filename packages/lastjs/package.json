@@ -36,6 +36,10 @@
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "default": "./dist/navigation/index.js"
+    },
+    "./rsc": {
+      "types": "./dist/rsc/index.d.ts",
+      "default": "./dist/rsc/index.js"
     }
   },
   "files": [
@@ -51,11 +55,14 @@
     "@babel/parser": "^7.26.3",
     "@babel/traverse": "^7.26.5",
     "@babel/types": "^7.26.3",
-    "@vitejs/plugin-react-swc": "^4.0.2",
+    "@vitejs/plugin-react": "^5.1.2",
+    "@vitejs/plugin-rsc": "^0.5.11",
     "commander": "^14.0.0",
     "h3": "^1.15.3",
     "pathe": "^2.0.3",
     "picocolors": "^1.1.1",
+    "react-server-dom-webpack": "^19.2.3",
+    "rsc-html-stream": "^0.0.7",
     "vite": "^7.3.0"
   },
   "peerDependencies": {

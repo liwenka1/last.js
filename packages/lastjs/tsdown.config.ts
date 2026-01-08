@@ -9,6 +9,7 @@ export default defineConfig({
     'server/index': 'src/server/index.ts',
     'vite/index': 'src/vite/index.ts',
     'navigation/index': 'src/navigation/index.ts',
+    'rsc/index': 'src/rsc/index.ts',
     cli: 'src/cli/cli.ts',
   },
   format: ['esm'],
@@ -18,5 +19,14 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   platform: 'node',
-  external: ['react', 'react-dom', 'react-dom/server', 'react-dom/client'],
+  external: [
+    'react',
+    'react-dom',
+    'react-dom/server',
+    'react-dom/client',
+    'react-server-dom-webpack',
+    'react-server-dom-webpack/server',
+    'react-server-dom-webpack/client',
+    '@vitejs/plugin-rsc',
+  ],
 });

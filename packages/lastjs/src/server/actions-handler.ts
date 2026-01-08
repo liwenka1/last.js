@@ -1,16 +1,16 @@
 /**
- * Server Actions 处理器
+ * Server Actions Handler
  *
- * 处理客户端的 Server Actions 调用
- * 使用白名单机制，只允许调用已注册的 actions
+ * 处理来自客户端的 Server Actions 调用
+ * 适配 RSC 的 callServer 机制
  */
 
 import type { ViteDevServer } from 'vite';
-import { actionsRegistry } from './actions-registry.js';
 
 export interface ActionRequest {
+  /** Action ID (格式: filePath:functionName) */
   actionId: string;
-  actionName: string;
+  /** 调用参数 */
   args: unknown[];
 }
 
@@ -20,70 +20,34 @@ export interface ActionResponse {
   error?: string;
 }
 
+// Action 注册表
+const actionsMap = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+
 /**
- * 序列化参数的类型定义
+ * 注册一个 Server Action
  */
-interface SerializedFormData {
-  __type: 'FormData';
-  data: Record<string, unknown>;
-}
-
-interface SerializedDate {
-  __type: 'Date';
-  value: string;
-}
-
-interface SerializedUndefined {
-  __undefined: true;
+export function registerAction(
+  actionId: string,
+  fn: (...args: unknown[]) => Promise<unknown>
+): void {
+  actionsMap.set(actionId, fn);
+  console.log(`[Server Actions] Registered: ${actionId}`);
 }
 
 /**
- * 反序列化参数
- * 处理 FormData、Date 等特殊类型
+ * 获取已注册的 Action
  */
-function deserializeArgs(args: unknown[]): unknown[] {
-  return args.map((arg) => {
-    // 处理 FormData
-    if (
-      arg &&
-      typeof arg === 'object' &&
-      '__type' in arg &&
-      arg.__type === 'FormData'
-    ) {
-      const serialized = arg as SerializedFormData;
-      const formData = new FormData();
-      const data = serialized.data;
+export function getAction(
+  actionId: string
+): ((...args: unknown[]) => Promise<unknown>) | undefined {
+  return actionsMap.get(actionId);
+}
 
-      for (const [key, value] of Object.entries(data)) {
-        if (value !== null && value !== undefined) {
-          formData.append(key, value as string);
-        }
-      }
-
-      return formData;
-    }
-
-    // 处理 Date
-    if (
-      arg &&
-      typeof arg === 'object' &&
-      '__type' in arg &&
-      arg.__type === 'Date'
-    ) {
-      const serialized = arg as SerializedDate;
-      return new Date(serialized.value);
-    }
-
-    // 处理 undefined（JSON 不支持 undefined）
-    if (arg && typeof arg === 'object' && '__undefined' in arg) {
-      const serialized = arg as SerializedUndefined;
-      if (serialized.__undefined === true) {
-        return undefined;
-      }
-    }
-
-    return arg;
-  });
+/**
+ * 清空注册表
+ */
+export function clearActions(): void {
+  actionsMap.clear();
 }
 
 /**
@@ -95,38 +59,58 @@ export async function handleServerAction(
 ): Promise<ActionResponse> {
   const { actionId, args } = request;
 
+  console.log(`[Server Actions] Handling: ${actionId}`);
+
   try {
-    // 从白名单获取 action
-    const actionInfo = actionsRegistry.get(actionId);
+    // 解析 actionId
+    const [filePath, functionName] = parseActionId(actionId);
 
-    if (!actionInfo) {
-      console.error(`[Server Actions] Action not found: ${actionId}`);
-      console.error(
-        'Available actions:',
-        Array.from(actionsRegistry.getAll().keys())
-      );
-
+    if (!filePath || !functionName) {
       return {
         success: false,
-        error: `Action not found: ${actionId}. Make sure the file has 'use server' directive at the top.`,
+        error: `Invalid action ID: ${actionId}`,
       };
     }
 
-    // 反序列化参数
-    const deserializedArgs = deserializeArgs(args);
+    // 使用 Vite 加载模块（开发模式）
+    if (vite) {
+      const mod = await vite.ssrLoadModule(filePath);
+      const fn = mod[functionName];
 
-    // 执行 action
-    console.log(`[Server Actions] Executing: ${actionId}`);
-    const result = await actionInfo.fn(...deserializedArgs);
+      if (typeof fn !== 'function') {
+        return {
+          success: false,
+          error: `Action not found: ${functionName} in ${filePath}`,
+        };
+      }
+
+      // 执行 action
+      const result = await fn(...deserializeArgs(args));
+
+      return {
+        success: true,
+        data: result,
+      };
+    }
+
+    // 生产模式：从注册表获取
+    const fn = actionsMap.get(actionId);
+    if (!fn) {
+      return {
+        success: false,
+        error: `Action not registered: ${actionId}`,
+      };
+    }
+
+    const result = await fn(...deserializeArgs(args));
 
     return {
       success: true,
       data: result,
     };
   } catch (error) {
-    console.error(`[Server Actions] Error in ${actionId}:`, error);
+    console.error(`[Server Actions] Error:`, error);
 
-    // 使用 Vite 的错误堆栈修复（开发环境）
     if (vite && error instanceof Error) {
       vite.ssrFixStacktrace(error);
     }
@@ -137,3 +121,59 @@ export async function handleServerAction(
     };
   }
 }
+
+/**
+ * 解析 Action ID
+ * 格式: "relative/path/to/file.ts:functionName"
+ */
+function parseActionId(actionId: string): [string | null, string | null] {
+  const lastColonIndex = actionId.lastIndexOf(':');
+  if (lastColonIndex === -1) {
+    return [null, null];
+  }
+
+  const filePath = actionId.substring(0, lastColonIndex);
+  const functionName = actionId.substring(lastColonIndex + 1);
+
+  return [filePath, functionName];
+}
+
+/**
+ * 反序列化参数
+ * 处理 FormData、Date 等特殊类型
+ */
+function deserializeArgs(args: unknown[]): unknown[] {
+  return args.map((arg) => {
+    if (!arg || typeof arg !== 'object') {
+      return arg;
+    }
+
+    const obj = arg as Record<string, unknown>;
+
+    // 处理 FormData
+    if (obj.__type === 'FormData' && obj.data) {
+      const formData = new FormData();
+      const data = obj.data as Record<string, unknown>;
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== null && value !== undefined) {
+          formData.append(key, value as string);
+        }
+      }
+      return formData;
+    }
+
+    // 处理 Date
+    if (obj.__type === 'Date' && obj.value) {
+      return new Date(obj.value as string);
+    }
+
+    // 处理 undefined
+    if (obj.__undefined === true) {
+      return undefined;
+    }
+
+    return arg;
+  });
+}
+
+export default handleServerAction;
